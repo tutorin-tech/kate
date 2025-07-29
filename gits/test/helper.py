@@ -13,17 +13,20 @@
 # License for the specific language governing permissions and limitations
 # under the License.
 
+"""The module contains a helper for testing purposes."""
+
+# ruff: noqa: D401, SLF001
+
 import array
 import random
 import string
 import unittest
 
-from gits.terminal import Terminal, BLACK_AND_WHITE
+from gits.terminal import BLACK_AND_WHITE, Terminal
 
 
 def reset_after_executing(func):
-    """Resets the terminal to sane modes after executing a decorated helper.
-    """
+    """Resets the terminal to sane modes after executing a decorated helper."""
     def wrapper(self, *args, **kwargs):
         func(self, *args, **kwargs)
         self._terminal._cap_rs1()
@@ -32,7 +35,10 @@ def reset_after_executing(func):
 
 
 class Helper(unittest.TestCase):
+    """The class represents the base class containing helpers for testing purposes."""
+
     def setUp(self):
+        """Initialize a terminal for testing purposes."""
         self._rows = 24
         self._cols = 80
         self._terminal = Terminal(self._rows, self._cols)
@@ -48,7 +54,8 @@ class Helper(unittest.TestCase):
         for character in s:
             self._terminal._echo(character)
 
-    def _get_random_string(self, n):
+    @staticmethod
+    def _get_random_string(n):
         """Generates a random string.
 
         The ``n`` argument is the length of the target string.
@@ -86,7 +93,7 @@ class Helper(unittest.TestCase):
         got = term._screen[pos]
         self.assertEqual(want, got)
 
-    def _check_cursor_right(self, cur_x, eol=False):
+    def _check_cursor_right(self, cur_x, *, eol=False):
         """A helper that checks the `_cursor_right` method.
 
         The ``cur_x`` argument is the x position of the cursor.
@@ -102,7 +109,7 @@ class Helper(unittest.TestCase):
             self.assertFalse(self._terminal._eol)
             self.assertEqual(cur_x + 1, self._terminal._cur_x)
 
-    def _check_cursor_down(self, cur_y, top=False):
+    def _check_cursor_down(self, cur_y, *, top=False):
         """A helper that checks the `_cursor_down` method.
 
         The ``cur_y`` argument is the y position of the cursor.
@@ -117,7 +124,7 @@ class Helper(unittest.TestCase):
         else:
             self.assertEqual(cur_y + 1, self._terminal._cur_y)
 
-    def _check_echo(self, c, pos, eol=False):
+    def _check_echo(self, c, pos, *, eol=False):
         """A helper that checks the `_echo` method.
 
         The ``c`` argument is a character to be put on the screen.
@@ -317,7 +324,7 @@ class Helper(unittest.TestCase):
 
     @reset_after_executing
     def _check_cap_csr(self, reg):
-        """ A helper that checks the `_cap_csr` method.
+        """A helper that checks the `_cap_csr` method.
 
         The ``reg`` argument must be a tuple or list of lines ``(top, bottom)``
         you want the scrolling region to be set to via `_cap_csr`.
@@ -367,7 +374,7 @@ class Helper(unittest.TestCase):
             got = term._peek((x, y), (len(s), y))
             self.assertEqual(want, got)
         else:
-            lines = lines[n:len(lines)-1]
+            lines = lines[n:len(lines) - 1]
             for i, line in enumerate(lines):
                 x, _ = line[1]
                 s = line[0]
