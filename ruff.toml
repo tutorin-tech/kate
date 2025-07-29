@@ -1,0 +1,25 @@
+line-length = 100
+
+exclude = [".git/"]
+
+target-version = "py313"
+
+[lint]
+select = ["ALL"]
+extend-select = ["W", "E"]
+preview = true
+
+ignore = [
+    "ANN", # flake8-annotations
+    "CPY001", # missing-copyright-notice
+    "D205", # blank-line-after-summary
+    "DOC201", # docstring-missing-returns
+    "PT009",  # pytest-unittest-assertion
+    "RUF012", # mutable-class-default
+]
+
+[lint.flake8-quotes]
+inline-quotes = "single"
+
+[lint.pylint]
+max-args = 9

@@ -1,3 +1,5 @@
+"""The builds the Kate package."""
+
 from setuptools import setup
 
 try:

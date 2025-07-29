@@ -13,6 +13,8 @@
 # License for the specific language governing permissions and limitations
 # under the License.
 
+"""The module contains the terminal's server side."""
+
 import fcntl
 import os
 import pty
@@ -21,6 +23,7 @@ import socket  # only for gethostname()
 import struct
 import sys
 import termios
+from pathlib import Path
 
 import tornado.httpserver
 import tornado.options
@@ -32,32 +35,53 @@ from tornado.websocket import WebSocketHandler
 from gits.terminal import Terminal
 
 define('port', help='listen on a specific port', default=8888)
-define('static_path', help='the path to static resources',
-       default=os.path.join(os.getcwd(), 'node_modules/gits-client/static'))
-define('templates_path', help='the path to templates',
-       default=os.path.join(os.getcwd(), 'node_modules/gits-client/templates'))
+define(
+    'static_path',
+    help='the path to static resources',
+    default=Path.cwd() / Path('node_modules/gits-client/static'),
+)
+define(
+    'templates_path',
+    help='the path to templates',
+    default=Path.cwd() / Path('node_modules/gits-client/templates'),
+)
 
 
 class IndexHandler(tornado.web.RequestHandler):
+    """The class represents a handler for the index page."""
+
     def get(self):
+        """Render the index page."""
         self.render('index.htm')
 
 
 class ControlPanelHandler(tornado.web.RequestHandler):
+    """The class represents a handler for the control pane."""
+
     def get(self):
+        """Render the control panel page."""
         self.render('control-panel.htm')
 
 
 class TermSocketHandler(WebSocketHandler):
+    """The class represents a terminal socket handler."""
+
     clients = {}
 
     def __init__(self, application, request, **kwargs):
+        """Initialize a TermSocketHandler object."""
         WebSocketHandler.__init__(self, application, request, **kwargs)
 
         self._fd = None
         self._io_loop = IOLoop.current()
 
     def _create(self, rows=24, cols=80):
+        """Create the file descriptor.
+
+        Returns:
+            Created file descriptor.
+
+        """
         pid, fd = pty.fork()
         if pid == 0:
             if os.getuid() == 0:
@@ -82,20 +106,22 @@ class TermSocketHandler(WebSocketHandler):
                 'PATH': os.environ['PATH'],
                 'TERM': 'linux',
             }
-            os.execvpe(cmd[0], cmd, env)
-        else:
-            fcntl.fcntl(fd, fcntl.F_SETFL, os.O_NONBLOCK)
-            fcntl.ioctl(fd, termios.TIOCSWINSZ,
-                        struct.pack('HHHH', rows, cols, 0, 0))
-            TermSocketHandler.clients[fd] = {
-                'client': self,
-                'pid': pid,
-                'terminal': Terminal(rows, cols)
-            }
+            return os.execvpe(cmd[0], cmd, env)  # noqa: S606
 
-            return fd
+        fcntl.fcntl(fd, fcntl.F_SETFL, os.O_NONBLOCK)
+        fcntl.ioctl(fd, termios.TIOCSWINSZ,
+                    struct.pack('HHHH', rows, cols, 0, 0))
+        TermSocketHandler.clients[fd] = {
+            'client': self,
+            'pid': pid,
+            'terminal': Terminal(rows, cols),
+        }
 
-    def _destroy(self, fd):
+        return fd
+
+    @staticmethod
+    def _destroy(fd):
+        """Destroy the file descriptor."""
         try:
             os.kill(TermSocketHandler.clients[fd]['pid'], signal.SIGHUP)
             os.close(fd)
@@ -108,7 +134,8 @@ class TermSocketHandler(WebSocketHandler):
     # tornado.websocket.WebSocketHandler
 
     def open(self):
-        def callback(*args, **kwargs):
+        """Handle a new WebSocket connection."""
+        def callback(*_args, **_kwargs):
             buf = os.read(self._fd, 65536)
             client = TermSocketHandler.clients[self._fd]
             html = client['terminal'].generate_html(buf)
@@ -118,36 +145,45 @@ class TermSocketHandler(WebSocketHandler):
         self._io_loop.add_handler(self._fd, callback, self._io_loop.READ)
 
     def on_message(self, data):
+        """Handle incoming messages on the WebSocket."""
         try:
             os.write(self._fd, data.encode('utf8'))
-        except (IOError, OSError):
+        except OSError:
             self._destroy(self._fd)
 
     def on_close(self):
+        """Handle the case when the WebSocket is closed."""
         self._io_loop.remove_handler(self._fd)
         self._destroy(self._fd)
 
 
 class Application(tornado.web.Application):
+    """The class represents a collection of request handlers that make up
+    a web application.
+    """
+
     def __init__(self):
+        """Initialize an Application object."""
         handlers = [
             (r'/', IndexHandler),
             (r'/termsocket', TermSocketHandler),
             (r'/experimental', ControlPanelHandler),
         ]
-        settings = dict(
-            template_path=options.templates_path,
-            static_path=options.static_path,
-        )
+        settings = {
+            'template_path': options.templates_path,
+            'static_path': options.static_path,
+        }
         tornado.web.Application.__init__(self, handlers, **settings)
 
 
 def main():
+    """Run the script."""
     tornado.options.parse_command_line()
 
     http_server = tornado.httpserver.HTTPServer(Application())
     http_server.listen(options.port)
     IOLoop.instance().start()
 
-if __name__ == "__main__":
+
+if __name__ == '__main__':
     main()

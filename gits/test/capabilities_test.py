@@ -1,4 +1,3 @@
-#!/usr/bin/python3
 # Copyright 2016 Dmitriy Shilin <sdadeveloper@gmail.com>
 # Copyright 2016 Evgeny Golyshev <eugulixes@gmail.com>
 #
@@ -14,24 +13,31 @@
 # License for the specific language governing permissions and limitations
 # under the License.
 
+"""The module contains the capability tests."""
+
+# ruff: noqa: S311, SLF001
+
 import array
 import random
 import unittest
 
 from gits.terminal import (
     BLACK_AND_WHITE,
-    UNDERLINE_BIT,
-    REVERSE_BIT,
     BLINK_BIT,
     BOLD_BIT,
+    REVERSE_BIT,
+    UNDERLINE_BIT,
 )
 from gits.test.helper import Helper
 
 
-class TestCapabilities(Helper):
+class TestCapabilities(Helper):  # noqa: PLR0904
+    """The class implements the capability tests."""
+
     def test_cursor_down(self):
         """The terminal should have the possibility to move the cursor down by
-        1 position."""
+        1 position.
+        """
         self._check_cursor_down(0)
         self._check_cursor_down(self._terminal._bottom_most, top=True)
 
@@ -114,7 +120,7 @@ class TestCapabilities(Helper):
         rand_y = random.randint(2, term._bottom_most - 1)
         self._check_scroll_up(['r'] * term._cols, (0, rand_y))
 
-        # TODO: add a test case for checking scrolling up the last line.
+        # TODO: add a test case for checking scrolling up the last line # noqa: FIX002, TD002, TD003
 
     def test_scroll_down(self):
         """The terminal should have the possibility to move an area by
@@ -193,14 +199,13 @@ class TestCapabilities(Helper):
         self._check_poke(zeros, (0, term._bottom_most))
 
     def test_cap_blink(self):
-        """The terminal should have the possibility to produce blinking text.
-        """
+        """The terminal should have the possibility to produce blinking text."""
         term = self._terminal
         term._cap_blink()
         self.assertTrue(term._is_bit_set(BLINK_BIT, term._sgr))
 
     def test_cap_bold(self):
-        """The terminal should have the possibility to produce bold text. """
+        """The terminal should have the possibility to produce bold text."""
         term = self._terminal
         term._cap_bold()
         self.assertTrue(term._is_bit_set(BOLD_BIT, term._sgr))
@@ -217,13 +222,13 @@ class TestCapabilities(Helper):
         self._check_cap_cub1((rand_x, 0))
 
     def test_cap_cr(self):
-        """The terminal should have the possibility to do carriage return. """
+        """The terminal should have the possibility to do carriage return."""
         self._check_cap_cr((0, 0))
         self._check_cap_cr((self._terminal._right_most, 0))
         self._check_cap_cr((random.randint(1, self._terminal._right_most), 0))
 
     def test_cap_csr(self):
-        """ The terminal should have the possibility to change the scrolling
+        """The terminal should have the possibility to change the scrolling
         region.
         """
         self._check_cap_csr((1, 1))
@@ -330,9 +335,7 @@ class TestCapabilities(Helper):
         ])
 
         lines_number = random.randint(2, term._bottom_most)
-        lines = []
-        for i in range(lines_number):
-            lines.append((['a'] * term._cols, (0, i)))
+        lines = [(['a'] * term._cols, (0, i)) for i in range(lines_number)]
 
         self._check_cap_dl(random.randint(0, lines_number), lines)
 
@@ -487,8 +490,7 @@ class TestCapabilities(Helper):
         self._check_string(want, (0, 0), (term._cols, 0))
 
     def test_cap_il1(self):
-        """The terminal should have the possibility to add a new blank line.
-        """
+        """The terminal should have the possibility to add a new blank line."""
         term = self._terminal
 
         self._check_cap_il1(['s'] * term._right_most, (0, 0))
@@ -575,12 +577,13 @@ class TestCapabilities(Helper):
         self.assertTrue(term._eol)
 
     def test_cap_rev(self):
+        """The terminal should have the possibility to enable Reverse Video mode."""
         term = self._terminal
         term._cap_rev()
         self.assertTrue(term._is_bit_set(REVERSE_BIT, term._sgr))
 
     def test_cap_ri(self):
-        """The terminal should have the possibility to scroll text down. """
+        """The terminal should have the possibility to scroll text down."""
         term = self._terminal
 
         self._check_cap_ri(['x'] * term._right_most, (0, 0))
@@ -619,15 +622,13 @@ class TestCapabilities(Helper):
         self.assertEqual(y, term._cur_y_bak)
 
     def test_cap_sgr0(self):
-        """The terminal should have the possibility to turn off all attributes.
-        """
+        """The terminal should have the possibility to turn off all attributes."""
         self._terminal._sgr = None
         self._terminal._cap_sgr0()
         self.assertEqual(BLACK_AND_WHITE, self._terminal._sgr)
 
     def test_cap_smso(self):
-        """The terminal should have the possibility to enter Standout mode. """
-        pass
+        """The terminal should have the possibility to enter Standout mode."""
 
     def test_cap_smul_rmul(self):
         """The terminal should have the possibility to enter and exit
@@ -650,6 +651,7 @@ class TestCapabilities(Helper):
 
         rand_y = random.randint(1, term._rows - 1)
         self._check_cap_vpa(rand_y)
+
 
 if __name__ == '__main__':
     unittest.main()
