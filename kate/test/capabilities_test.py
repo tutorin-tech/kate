@@ -21,14 +21,14 @@ import array
 import random
 import unittest
 
-from gits.terminal import (
+from kate.terminal import (
     BLACK_AND_WHITE,
     BLINK_BIT,
     BOLD_BIT,
     REVERSE_BIT,
     UNDERLINE_BIT,
 )
-from gits.test.helper import Helper
+from kate.test.helper import Helper
 
 
 class TestCapabilities(Helper):  # noqa: PLR0904

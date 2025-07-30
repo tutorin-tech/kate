@@ -6,22 +6,22 @@ try:
     import pypandoc
     long_description = pypandoc.convert('README.md', 'rst')
 except ImportError:
-    long_description = ('Gits is a web-based terminal emulator. Gits consists '
+    long_description = ('Kate is a web-based terminal emulator. Kate consists '
                         'of two parts: a client and a server. Note that the '
                         'package provides the server.')
 
 
-setup(name='gits',
+setup(name='kate',
       version='0.4',
-      description='Gits package',
+      description='Kate package',
       long_description=long_description,
-      url='https://github.com/tolstoyevsky/gits.git',
+      url='https://github.com/tutorin-tech/kate.git',
       maintainer='Evgeny Golyshev',
       maintainer_email='Evgeny Golyshev <eugulixes@gmail.com>',
       license='http://www.apache.org/licenses/LICENSE-2.0',
       scripts=['bin/server.py'],
-      packages=['gits'],
-      package_data={'gits': ['linux_console.yml']},
+      packages=['kate'],
+      package_data={'kate': ['linux_console.yml']},
       install_requires=[
           'PyYAML',
           'tornado',

@@ -32,18 +32,18 @@ from tornado.ioloop import IOLoop
 from tornado.options import define, options
 from tornado.websocket import WebSocketHandler
 
-from gits.terminal import Terminal
+from kate.terminal import Terminal
 
 define('port', help='listen on a specific port', default=8888)
 define(
     'static_path',
     help='the path to static resources',
-    default=Path.cwd() / Path('node_modules/gits-client/static'),
+    default=Path.cwd() / Path('node_modules/kate-client/static'),
 )
 define(
     'templates_path',
     help='the path to templates',
-    default=Path.cwd() / Path('node_modules/gits-client/templates'),
+    default=Path.cwd() / Path('node_modules/kate-client/templates'),
 )
 
 
