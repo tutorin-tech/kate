@@ -2,7 +2,7 @@ Kate is a terminal emulator used as a case study in the book **Acid Burn: Unix T
 
 ## Authors
 
-See [AUTHORS](https://github.com/tolstoyevsky/gits/blob/master/AUTHORS.md).
+See [AUTHORS](https://github.com/tutorin-tech/kate/blob/main/AUTHORS.md).
 
 ## Licensing
 

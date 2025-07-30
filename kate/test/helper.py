@@ -22,7 +22,7 @@ import random
 import string
 import unittest
 
-from gits.terminal import BLACK_AND_WHITE, Terminal
+from kate.terminal import BLACK_AND_WHITE, Terminal
 
 
 def reset_after_executing(func):

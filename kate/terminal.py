@@ -85,7 +85,7 @@ class Terminal:
 
         self._sgr = None  # Select Graphic Rendition
 
-        # Gits supports two color schemes: normal and bright. Each color scheme
+        # Kate supports two color schemes: normal and bright. Each color scheme
         # consists of 8 colors for a background and text. The terminal doesn't
         # allow users to switch between them so far.
         # The bright color scheme is used by default.
