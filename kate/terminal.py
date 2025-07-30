@@ -32,6 +32,7 @@ from kate.constants import (
 
 
 class Terminal(
+    mixins.BitFlagsMixin,
     mixins.ScreenBufferMixin,
     BaseTerminal,
 ):
@@ -62,19 +63,6 @@ class Terminal(
 
     def _ignore(self):
         """Allow ignoring some escape and control sequences."""
-
-    def _set_bit(self, bit):
-        """Set the specified `_sgr` bit."""
-        self._sgr |= 1 << bit
-
-    @staticmethod
-    def _is_bit_set(bit, value):
-        """Check if the specified bit is set in the specified value."""
-        return bool(value & (1 << bit))
-
-    def _clean_bit(self, bit):
-        """Clean the specified `_sgr` bit."""
-        self._sgr &= ~(1 << bit)
 
     def _default_rendition(self):
         """Cancel the effect of any preceding occurrence of SGR in the data
