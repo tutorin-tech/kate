@@ -21,7 +21,7 @@ import array
 import random
 import unittest
 
-from kate.terminal import (
+from kate.constants import (
     BLACK_AND_WHITE,
     BLINK_BIT,
     BOLD_BIT,

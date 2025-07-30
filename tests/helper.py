@@ -22,7 +22,8 @@ import random
 import string
 import unittest
 
-from kate.terminal import BLACK_AND_WHITE, Terminal
+from kate.constants import BLACK_AND_WHITE
+from kate.terminal import Terminal
 
 
 def reset_after_executing(func):
