@@ -19,8 +19,5 @@ jobs:
         with:
           python-version: '3.13'
 
-      - name: Install dependencies
-        run: pip install PyYAML
-
       - name: Run unit tests
         run: python kate/test/capabilities_test.py

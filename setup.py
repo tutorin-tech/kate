@@ -21,7 +21,7 @@ setup(name='kate',
       license='http://www.apache.org/licenses/LICENSE-2.0',
       scripts=['bin/server.py'],
       packages=['kate'],
-      package_data={'kate': ['linux_console.yml']},
+      package_data={'kate': ['linux_console.json']},
       install_requires=[
           'PyYAML',
           'tornado',
