@@ -43,7 +43,7 @@ define(
 define(
     'templates_path',
     help='the path to templates',
-    default=Path.cwd() / Path('node_modules/kate-client/templates'),
+    default=Path.cwd() / Path('node_modules/kate-client/kate/templates'),
 )
 
 
