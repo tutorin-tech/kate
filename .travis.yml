@@ -8,5 +8,5 @@ install:
   - pip install pep8
 
 script:
-  - env PYTHONPATH=`pwd` python3 kate/tests/capabilities_test.py
-  - pep8 bin/server.py kate/terminal.py kate/tests/*
+  - env PYTHONPATH=`pwd` python3 tests/capabilities_test.py
+  - pep8 bin/server.py kate/terminal.py tests/*
