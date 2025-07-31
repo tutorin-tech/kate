@@ -4,7 +4,7 @@
 
 import random
 
-from kate.tests.helper import Helper
+from tests.helper import Helper
 
 
 class CursorStateTest(Helper):

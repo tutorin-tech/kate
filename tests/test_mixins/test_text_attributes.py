@@ -4,7 +4,7 @@
 
 
 from kate.constants import BLACK_AND_WHITE, BLINK_BIT, BOLD_BIT, REVERSE_BIT, UNDERLINE_BIT
-from kate.tests.helper import Helper
+from tests.helper import Helper
 
 
 class TextAttributesTest(Helper):

@@ -20,7 +20,7 @@
 import random
 import unittest
 
-from kate.tests.helper import Helper
+from tests.helper import Helper
 
 
 class TerminalTest(Helper):
