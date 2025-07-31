@@ -38,7 +38,7 @@ define('port', help='listen on a specific port', default=8888)
 define(
     'static_path',
     help='the path to static resources',
-    default=Path.cwd() / Path('node_modules/kate-client/static'),
+    default=Path.cwd() / Path('node_modules/kate-client/kate/static'),
 )
 define(
     'templates_path',
