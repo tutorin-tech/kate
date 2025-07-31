@@ -1,16 +1,16 @@
 const path = require('path');
 const webpack = require('webpack');
-const appModulesRoot = path.resolve(__dirname, 'static');
+const appModulesRoot = path.resolve(__dirname, 'kate/static');
 const nodeModulesRoot = path.resolve(__dirname, 'node_modules');
 
 const config = {
     entry: {
-        'main': './static/basic/index',
-        'control-panel': './static/control-panel/index',
+        'main': './kate/static/basic/index',
+        'control-panel': './kate/static/control-panel/index',
     },
 
     output: {
-        path: path.resolve(__dirname, 'static', 'bundles'),
+        path: path.resolve(__dirname, 'kate/static', 'bundles'),
         filename: '[name].js'
     },
 
