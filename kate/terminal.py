@@ -19,11 +19,10 @@
 
 import array
 import html
+import json
 import logging
 import re
 from pathlib import Path
-
-import yaml
 
 MAGIC_NUMBER = 0x10000000000
 # +------------------+--------------------------------------------------------+
@@ -97,11 +96,12 @@ class Terminal:
         self._outbuf = ''
 
         linux_console = Path(
-            Path(__file__).parent / 'linux_console.yml',
+            Path(__file__).parent / 'linux_console.json',
         ).read_text(encoding='utf-8')
-        sequences = yaml.load(linux_console, Loader=yaml.SafeLoader)
+        linux_console = re.sub(r'//.*', '', linux_console)  # remove comments
+        sequences = json.loads(linux_console)
 
-        self.control_characters = sequences['control_characters']
+        self.control_characters = {int(k): v for k, v in sequences['control_characters'].items()}
 
         self._escape_sequences = {}
         for k, v in sequences['escape_sequences'].items():
