@@ -40,7 +40,7 @@ Then, install the server::
 
 Finally, go to the directory where you executed ``npm install kate-client`` and
 run ``server.py``. The server tries to use the
-``node_modules/kate-client/kate/static`` and  ``node_modules/kate-client/templates``
+``node_modules/kate-client/kate/static`` and  ``node_modules/kate-client/kate/templates``
 directories by default. Also you can explicitly specify which directories
 should be used through the ``--static-path`` and ``--templates-path``
 parameters.
@@ -68,17 +68,17 @@ After that, intall the server::
 
 Finally, run the server::
 
-    server.py --static-path=kate/static --templates-path=templates
+    server.py --static-path=kate/static --templates-path=kate/templates
 
 or
 
 .. parsed-literal::
 
-    ./bin/server.py --static-path=kate/static --templates-path=templates
+    ./bin/server.py --static-path=kate/static --templates-path=kate/templates
 
 As previously mentioned in *Automatic installation*, the server tries to use
 the ``node_modules/kate-client/kate/static`` and
-``node_modules/kate-client/templates`` directories by default. In this case
+``node_modules/kate-client/kate/templates`` directories by default. In this case
 they don't exist, so you have to explicitly specify which directories should be
 used through the ``--static-path`` and ``--templates-path`` parameters.
 
