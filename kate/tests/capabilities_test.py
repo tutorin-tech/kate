@@ -28,7 +28,7 @@ from kate.constants import (
     REVERSE_BIT,
     UNDERLINE_BIT,
 )
-from kate.test.helper import Helper
+from kate.tests.helper import Helper
 
 
 class TestCapabilities(Helper):  # noqa: PLR0904
