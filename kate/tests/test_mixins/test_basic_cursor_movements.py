@@ -4,7 +4,7 @@
 
 import random
 
-from kate.test.helper import Helper
+from kate.tests.helper import Helper
 
 
 class BasicCursorMovementTest(Helper):
