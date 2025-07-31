@@ -6,7 +6,7 @@ import array
 import random
 
 from kate.constants import BLACK_AND_WHITE
-from kate.tests.helper import Helper
+from tests.helper import Helper
 
 
 class ScreenBufferTest(Helper):
