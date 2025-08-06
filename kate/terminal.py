@@ -229,10 +229,6 @@ class Terminal:
     def _ignore(self):
         """Allow ignoring some escape and control sequences."""
 
-    def _cap_civis(self):
-        """Make the cursor invisible. See _cap_cvvis."""
-        self._cur_visible = False
-
     def _cap_cr(self):
         """Do carriage return."""
         self._eol = False
@@ -277,10 +273,6 @@ class Terminal:
         """
         self._cap_vpa(y)
         self._cap_hpa(x)
-
-    def _cap_cvvis(self):
-        """Make the cursor visible. See _cap_civis."""
-        self._cur_visible = True
 
     def _cap_dch(self, n):
         """Delete ``n`` number of characters."""
@@ -391,12 +383,6 @@ class Terminal:
         """Handle an Up Arrow key-press."""
         self._cur_y = max(self._top_most, self._cur_y - 1)
 
-    def _cap_rc(self):
-        """Restore the cursor to the last saved position. See _cap_sc."""
-        self._cur_x = self._cur_x_bak
-        self._cur_y = self._cur_y_bak
-        self._eol = self._cur_x == self._right_most
-
     def _cap_ri(self):
         """Scroll text down. See _cap_ind."""
         self._cur_y = max(self._top_most, self._cur_y - 1)
@@ -420,11 +406,6 @@ class Terminal:
 
         self._buf = ''
         self._outbuf = ''
-
-    def _cap_sc(self):
-        """Save the current cursor position. See _cap_rc."""
-        self._cur_x_bak = self._cur_x
-        self._cur_y_bak = self._cur_y
 
     def _cap_smir(self):
         """Enter Insert mode. See _cap_rmir."""
