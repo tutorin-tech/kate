@@ -11,6 +11,7 @@ from kate.test.test_mixins.test_character_operations import CharacterOperationsT
 from kate.test.test_mixins.test_cursor_state import CursorStateTest
 from kate.test.test_mixins.test_line_operations import LineOperationsTest
 from kate.test.test_mixins.test_screen_buffer import ScreenBufferTest
+from kate.test.test_mixins.test_screen_clearing import ScreenClearingTest
 
 if __name__ == '__main__':
     unittest.main()
