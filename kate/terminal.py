@@ -229,15 +229,6 @@ class Terminal:
     def _ignore(self):
         """Allow ignoring some escape and control sequences."""
 
-    def _default_rendition(self):
-        """Cancel the effect of any preceding occurrence of SGR in the data
-        stream regardless of the setting of the GRAPHIC RENDITION COMBINATION
-        MODE (GRCM). For details, see section 8.3.117, "SGR - SELECT GRAPHIC
-        RENDITION," in ECMA-048 at
-        http://www.ecma-international.org/publications/standards/Ecma-048.htm.
-        """
-        self._set_color(0)
-
     def _set_bg_color(self, color):
         """Set the background color."""
         color_bits, _ = divmod(self._sgr, MAGIC_NUMBER)
@@ -267,27 +258,6 @@ class Terminal:
             self._set_attribute(p1)
             self._set_color(p2)
 
-    def _set_attribute(self, p1):
-        """Set attribute parameters of SGR."""
-        if p1 == 1:
-            self._cap_bold()
-        elif p1 == 2:
-            self._cap_dim()
-        elif p1 == 4:
-            self._cap_smul()
-        elif p1 == 5:
-            self._cap_blink()
-        elif p1 == 7:
-            self._cap_rev()
-        elif p1 == 10:
-            self._cap_rmpch()
-        elif p1 == 11:
-            self._cap_smpch()
-        elif p1 == 24:
-            self._cap_rmul()
-        elif p1 == 27:
-            self._cap_rmso()
-
     def _set_color(self, color):
         if color == 0:
             self._sgr = BLACK_AND_WHITE
@@ -299,15 +269,6 @@ class Terminal:
             self._set_bg_color(color - 40)
         elif color == 49:
             self._sgr = BLACK_AND_WHITE
-
-    def _cap_blink(self):
-        """Produce blinking text."""
-        self._set_bit(BLINK_BIT)
-
-    def _cap_bold(self):
-        """Produce bold text."""
-        self._set_bit(BOLD_BIT)
-        self._set_color(37)
 
     def _cap_civis(self):
         """Make the cursor invisible. See _cap_cvvis."""
@@ -372,9 +333,6 @@ class Terminal:
     def _cap_dch1(self):
         """Delete a character."""
         self._cap_dch(1)
-
-    def _cap_dim(self):
-        """Enter Half-bright mode."""
 
     def _cap_dl(self, n):
         """Delete ``n`` number of lines.
@@ -474,21 +432,11 @@ class Terminal:
         """Handle an Up Arrow key-press."""
         self._cur_y = max(self._top_most, self._cur_y - 1)
 
-    def _cap_op(self):
-        """Set default color-pair to the original one. The name of the
-        capability stands for 'original pair'.
-        """
-        self._set_color_pair(39, 49)
-
     def _cap_rc(self):
         """Restore the cursor to the last saved position. See _cap_sc."""
         self._cur_x = self._cur_x_bak
         self._cur_y = self._cur_y_bak
         self._eol = self._cur_x == self._right_most
-
-    def _cap_rev(self):
-        """Enable Reverse Video mode."""
-        self._set_bit(REVERSE_BIT)
 
     def _cap_ri(self):
         """Scroll text down. See _cap_ind."""
@@ -498,16 +446,6 @@ class Terminal:
 
     def _cap_rmir(self):
         """Exit Insert mode. See _cap_smir."""
-
-    def _cap_rmpch(self):
-        """Exit PC character display mode. See _cap_smpch."""
-
-    def _cap_rmso(self):
-        """Exit Standout mode. See _cap_smso."""
-
-    def _cap_rmul(self):
-        """Exit Underline mode. See _cap_smul."""
-        self._clean_bit(UNDERLINE_BIT)
 
     def _cap_rs1(self):
         """Reset terminal completely to sane modes."""
@@ -529,41 +467,8 @@ class Terminal:
         self._cur_x_bak = self._cur_x
         self._cur_y_bak = self._cur_y
 
-    def _cap_sgr(self, p1=0, p2=0, p3=0, p4=0, p5=0, p6=0, p7=0, p8=0, p9=0):
-        """Allow setting arbitrary combinations of modes taking nine
-        arguments. The nine arguments are, in order:
-        * standout;
-        * underline;
-        * reverse;
-        * blink;
-        * dim;
-        * bold;
-        * blank;
-        * protect;
-        * alternate character set.
-        """
-
-    def _cap_sgr0(self):
-        """Reset all attributes to the default values."""
-        self._set_color_pair(0, 10)
-
     def _cap_smir(self):
         """Enter Insert mode. See _cap_rmir."""
-
-    def _cap_smso(self):
-        """Enter Standout mode. See _cap_rmso.
-
-        John Strang, in his book Programming with Curses, gives the following
-        definition for the term. Standout mode is whatever special highlighting
-        the terminal can do, as defined in the terminal's database entry.
-        """
-
-    def _cap_smul(self):
-        """Enter Underline mode. See _cap_rmul."""
-        self._set_bit(UNDERLINE_BIT)
-
-    def _cap_smpch(self):
-        """Enter PC character display mode. See _cap_rmpch."""
 
     def _cap_vpa(self, y):
         """Set the vertical position of the cursor to ``y``. See _cap_hpa.
