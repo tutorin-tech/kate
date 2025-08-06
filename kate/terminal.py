@@ -297,9 +297,6 @@ class Terminal:
         if self._cur_y == self._top_most:
             self._scroll_down(self._top_most, self._bottom_most)
 
-    def _cap_rmir(self):
-        """Exit Insert mode. See _cap_smir."""
-
     def _cap_rs1(self):
         """Reset terminal completely to sane modes."""
         cells_number = self._cols * self._rows
@@ -314,9 +311,6 @@ class Terminal:
 
         self._buf = ''
         self._outbuf = ''
-
-    def _cap_smir(self):
-        """Enter Insert mode. See _cap_rmir."""
 
     def _cap_vpa(self, y):
         """Set the vertical position of the cursor to ``y``. See _cap_hpa.
