@@ -23,6 +23,7 @@ import logging
 import re
 from pathlib import Path
 
+from kate import mixins
 from kate.constants import (
     BLACK_AND_WHITE,
     BLINK_BIT,
@@ -33,7 +34,22 @@ from kate.constants import (
 )
 
 
-class Terminal:
+class Terminal(
+    mixins.AbsolutePositioningMixin,
+    mixins.ArrowKeyHandlingMixin,
+    mixins.BasicCursorMovementMixin,
+    mixins.BitFlagsMixin,
+    mixins.CharacterOperationsMixin,
+    mixins.ColorManagementMixin,
+    mixins.CursorStateMixin,
+    mixins.ExecutionMixin,
+    mixins.InsertModeMixin,
+    mixins.LineOperationsMixin,
+    mixins.ScreenBufferMixin,
+    mixins.ScreenClearingMixin,
+    mixins.ScrollingControlMixin,
+    mixins.TextAttributesMixin,
+):
     """The class implements a terminal."""
 
     def __init__(self, rows=24, cols=80):
