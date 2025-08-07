@@ -182,7 +182,11 @@ def main():
 
     http_server = tornado.httpserver.HTTPServer(Application())
     http_server.listen(options.port)
-    IOLoop.instance().start()
+
+    try:
+        IOLoop.current().start()
+    except KeyboardInterrupt:
+        IOLoop.current().stop()
 
 
 if __name__ == '__main__':
