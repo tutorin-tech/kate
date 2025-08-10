@@ -23,7 +23,6 @@ import socket  # only for gethostname()
 import struct
 import sys
 import termios
-from pathlib import Path
 
 import tornado.httpserver
 import tornado.options
@@ -35,32 +34,6 @@ from tornado.websocket import WebSocketHandler
 from kate.terminal import Terminal
 
 define('port', help='listen on a specific port', default=8888)
-define(
-    'static_path',
-    help='the path to static resources',
-    default=Path.cwd() / Path('node_modules/kate-client/kate/static'),
-)
-define(
-    'templates_path',
-    help='the path to templates',
-    default=Path.cwd() / Path('node_modules/kate-client/kate/templates'),
-)
-
-
-class IndexHandler(tornado.web.RequestHandler):
-    """The class represents a handler for the index page."""
-
-    def get(self):
-        """Render the index page."""
-        self.render('index.htm')
-
-
-class ControlPanelHandler(tornado.web.RequestHandler):
-    """The class represents a handler for the control pane."""
-
-    def get(self):
-        """Render the control panel page."""
-        self.render('control-panel.htm')
 
 
 class TermSocketHandler(WebSocketHandler):
@@ -74,6 +47,11 @@ class TermSocketHandler(WebSocketHandler):
 
         self._fd = None
         self._io_loop = IOLoop.current()
+
+    @staticmethod
+    def check_origin(_origin):
+        """Enable support for allowing alternate origins."""
+        return True
 
     def _create(self, rows=24, cols=80):
         """Create the file descriptor.
@@ -165,15 +143,9 @@ class Application(tornado.web.Application):
     def __init__(self):
         """Initialize an Application object."""
         handlers = [
-            (r'/', IndexHandler),
             (r'/termsocket', TermSocketHandler),
-            (r'/experimental', ControlPanelHandler),
         ]
-        settings = {
-            'template_path': options.templates_path,
-            'static_path': options.static_path,
-        }
-        tornado.web.Application.__init__(self, handlers, **settings)
+        tornado.web.Application.__init__(self, handlers)
 
 
 def main():

@@ -7,3 +7,11 @@ See [AUTHORS](https://github.com/tutorin-tech/kate/blob/main/AUTHORS.md).
 ## Licensing
 
 Kate is distributed under the [Apache License, Version 2.0](http://www.apache.org/licenses/LICENSE-2.0.html).
+
+## Running frontend
+
+```bash
+cd frontend/
+npm i
+npm run dev
+```
