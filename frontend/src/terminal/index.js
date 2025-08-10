@@ -13,5 +13,5 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-import './terminal.less';
-export * from './terminal';
+import "./terminal.less";
+export * from "./terminal";
