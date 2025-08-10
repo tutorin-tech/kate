@@ -38,12 +38,12 @@ define('port', help='listen on a specific port', default=8888)
 define(
     'static_path',
     help='the path to static resources',
-    default=Path.cwd() / Path('node_modules/kate-client/kate/static'),
+    default=Path.cwd() / Path('frontend/dist'),
 )
 define(
     'templates_path',
     help='the path to templates',
-    default=Path.cwd() / Path('node_modules/kate-client/kate/templates'),
+    default=Path.cwd() / Path('frontend/dist'),
 )
 
 
@@ -52,7 +52,7 @@ class IndexHandler(tornado.web.RequestHandler):
 
     def get(self):
         """Render the index page."""
-        self.render('index.htm')
+        self.render('index.html')
 
 
 class ControlPanelHandler(tornado.web.RequestHandler):
@@ -60,7 +60,7 @@ class ControlPanelHandler(tornado.web.RequestHandler):
 
     def get(self):
         """Render the control panel page."""
-        self.render('control-panel.htm')
+        self.render('control-panel.html')
 
 
 class TermSocketHandler(WebSocketHandler):
