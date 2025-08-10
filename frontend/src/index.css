@@ -1,0 +1,106 @@
+body {
+  margin: 0;
+}
+
+.terminal-display {
+  display: inline-block;
+  font-family: "Source Code Pro", monospace;
+  font-size: 14px;
+  margin: 0px;
+  overflow: hidden;
+  padding: 5px;
+  background: #000000;
+}
+
+/* Foreground colors (0-15) */
+.f0 {
+  color: #000000;
+}
+.f1 {
+  color: #b21818;
+}
+.f2 {
+  color: #18b218;
+}
+.f3 {
+  color: #b26818;
+}
+.f4 {
+  color: #1818b2;
+}
+.f5 {
+  color: #b218b2;
+}
+.f6 {
+  color: #18b2b2;
+}
+.f7 {
+  color: #b2b2b2;
+}
+.f8 {
+  color: #686868;
+}
+.f9 {
+  color: #ff5454;
+}
+.f10 {
+  color: #54ff54;
+}
+.f11 {
+  color: #ffff54;
+}
+.f12 {
+  color: #5454ff;
+}
+.f13 {
+  color: #ff54ff;
+}
+.f14 {
+  color: #54ffff;
+}
+.f15 {
+  color: #ffffff;
+}
+
+/* Background colors (0-7) */
+.b0 {
+  background-color: #000000;
+}
+.b1 {
+  background-color: #b21818;
+}
+.b2 {
+  background-color: #18b218;
+}
+.b3 {
+  background-color: #b26818;
+}
+.b4 {
+  background-color: #1818b2;
+}
+.b5 {
+  background-color: #b218b2;
+}
+.b6 {
+  background-color: #18b2b2;
+}
+.b7 {
+  background-color: #b2b2b2;
+}
+
+.underline {
+  text-decoration: underline;
+}
+.blink {
+  animation: blink-animation 1s steps(5, start) infinite;
+}
+.bold {
+  font-family: "Source Code Pro", monospace;
+  font-weight: 700;
+}
+
+@keyframes blink-animation {
+  to {
+    visibility: hidden;
+  }
+}
