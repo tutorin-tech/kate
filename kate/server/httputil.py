@@ -26,15 +26,11 @@ import datetime
 import email.utils
 from functools import lru_cache
 from http.client import responses
-import http.cookies
 import re
-from ssl import SSLError
 import time
-import unicodedata
 from urllib.parse import urlencode, urlparse, urlunparse, parse_qsl
 
-from kate.websocket.escape import native_str, parse_qs_bytes, utf8, to_unicode
-from kate.websocket.util import ObjectDict, unicode_type
+from kate.server.escape import native_str, parse_qs_bytes, to_unicode
 
 
 # responses is unused in this file, but we re-export it to other files.
@@ -46,14 +42,11 @@ from typing import (
     Tuple,
     Iterable,
     List,
-    Mapping,
     Iterator,
     Dict,
     Union,
     Optional,
     Awaitable,
-    Generator,
-    AnyStr,
 )
 
 if typing.TYPE_CHECKING:
@@ -169,22 +162,6 @@ class HTTPHeaders(StrMutableMapping):
     Set-Cookie: A=B
     Set-Cookie: C=D
     """
-
-    @typing.overload
-    def __init__(self, __arg: Mapping[str, List[str]]) -> None:
-        pass
-
-    @typing.overload  # noqa: F811
-    def __init__(self, __arg: Mapping[str, str]) -> None:
-        pass
-
-    @typing.overload  # noqa: F811
-    def __init__(self, *args: Tuple[str, str]) -> None:
-        pass
-
-    @typing.overload  # noqa: F811
-    def __init__(self, **kwargs: str) -> None:
-        pass
 
     def __init__(self, *args: typing.Any, **kwargs: str) -> None:  # noqa: F811
         self._dict = {}  # type: typing.Dict[str, str]
@@ -475,7 +452,6 @@ class HTTPServerRequest:
         headers: Optional[HTTPHeaders] = None,
         body: Optional[bytes] = None,
         # host: Optional[str] = None,
-        files: Optional[Dict[str, List["HTTPFile"]]] = None,
         connection: Optional["HTTPConnection"] = None,
         start_line: Optional["RequestStartLine"] = None,
         server_connection: Optional[object] = None,
@@ -523,7 +499,6 @@ class HTTPServerRequest:
             # are supplied).
             raise HTTPInputError("Multiple host headers not allowed: %r" % self.host)
         self.host_name = split_host_and_port(self.host.lower())[0]
-        self.files = files or {}
         self.connection = connection
         self.server_connection = server_connection
         self._start_time = time.time()
@@ -535,82 +510,12 @@ class HTTPServerRequest:
         self.query_arguments = copy.deepcopy(self.arguments)
         self.body_arguments = {}  # type: Dict[str, List[bytes]]
 
-    @property
-    def cookies(self) -> Dict[str, http.cookies.Morsel]:
-        """A dictionary of ``http.cookies.Morsel`` objects."""
-        if not hasattr(self, "_cookies"):
-            self._cookies = (
-                http.cookies.SimpleCookie()
-            )  # type: http.cookies.SimpleCookie
-            if "Cookie" in self.headers:
-                try:
-                    parsed = parse_cookie(self.headers["Cookie"])
-                except Exception:
-                    pass
-                else:
-                    for k, v in parsed.items():
-                        try:
-                            self._cookies[k] = v
-                        except Exception:
-                            # SimpleCookie imposes some restrictions on keys;
-                            # parse_cookie does not. Discard any cookies
-                            # with disallowed keys.
-                            pass
-        return self._cookies
-
-    def full_url(self) -> str:
-        """Reconstructs the full URL for this request."""
-        return self.protocol + "://" + self.host + self.uri  # type: ignore[operator]
-
     def request_time(self) -> float:
         """Returns the amount of time it took for this request to execute."""
         if self._finish_time is None:
             return time.time() - self._start_time
         else:
             return self._finish_time - self._start_time
-
-    def get_ssl_certificate(
-        self, binary_form: bool = False
-    ) -> Union[None, Dict, bytes]:
-        """Returns the client's SSL certificate, if any.
-
-        To use client certificates, the HTTPServer's
-        `ssl.SSLContext.verify_mode` field must be set, e.g.::
-
-            ssl_ctx = ssl.create_default_context(ssl.Purpose.CLIENT_AUTH)
-            ssl_ctx.load_cert_chain("foo.crt", "foo.key")
-            ssl_ctx.load_verify_locations("cacerts.pem")
-            ssl_ctx.verify_mode = ssl.CERT_REQUIRED
-            server = HTTPServer(app, ssl_options=ssl_ctx)
-
-        By default, the return value is a dictionary (or None, if no
-        client certificate is present).  If ``binary_form`` is true, a
-        DER-encoded form of the certificate is returned instead.  See
-        SSLSocket.getpeercert() in the standard library for more
-        details.
-        http://docs.python.org/library/ssl.html#sslsocket-objects
-        """
-        try:
-            if self.connection is None:
-                return None
-            # TODO: add a method to HTTPConnection for this so it can work with HTTP/2
-            return self.connection.stream.socket.getpeercert(  # type: ignore
-                binary_form=binary_form
-            )
-        except SSLError:
-            return None
-
-    def _parse_body(self) -> None:
-        parse_body_arguments(
-            self.headers.get("Content-Type", ""),
-            self.body,
-            self.body_arguments,
-            self.files,
-            self.headers,
-        )
-
-        for k, v in self.body_arguments.items():
-            self.arguments.setdefault(k, []).extend(v)
 
     def __repr__(self) -> str:
         attrs = ("protocol", "host", "method", "uri", "version", "remote_ip")
@@ -758,242 +663,6 @@ class HTTPConnection:
         raise NotImplementedError()
 
 
-def url_concat(
-    url: str,
-    args: Union[
-        None, Dict[str, str], List[Tuple[str, str]], Tuple[Tuple[str, str], ...]
-    ],
-) -> str:
-    """Concatenate url and arguments regardless of whether
-    url has existing query parameters.
-
-    ``args`` may be either a dictionary or a list of key-value pairs
-    (the latter allows for multiple values with the same key.
-
-    >>> url_concat("http://example.com/foo", dict(c="d"))
-    'http://example.com/foo?c=d'
-    >>> url_concat("http://example.com/foo?a=b", dict(c="d"))
-    'http://example.com/foo?a=b&c=d'
-    >>> url_concat("http://example.com/foo?a=b", [("c", "d"), ("c", "d2")])
-    'http://example.com/foo?a=b&c=d&c=d2'
-    """
-    if args is None:
-        return url
-    parsed_url = urlparse(url)
-    if isinstance(args, dict):
-        parsed_query = parse_qsl(parsed_url.query, keep_blank_values=True)
-        parsed_query.extend(args.items())
-    elif isinstance(args, list) or isinstance(args, tuple):
-        parsed_query = parse_qsl(parsed_url.query, keep_blank_values=True)
-        parsed_query.extend(args)
-    else:
-        err = "'args' parameter should be dict, list or tuple. Not {0}".format(
-            type(args)
-        )
-        raise TypeError(err)
-    final_query = urlencode(parsed_query)
-    url = urlunparse(
-        (
-            parsed_url[0],
-            parsed_url[1],
-            parsed_url[2],
-            parsed_url[3],
-            final_query,
-            parsed_url[5],
-        )
-    )
-    return url
-
-
-class HTTPFile(ObjectDict):
-    """Represents a file uploaded via a form.
-
-    For backwards compatibility, its instance attributes are also
-    accessible as dictionary keys.
-
-    * ``filename``
-    * ``body``
-    * ``content_type``
-    """
-
-    filename: str
-    body: bytes
-    content_type: str
-
-
-def _parse_request_range(
-    range_header: str,
-) -> Optional[Tuple[Optional[int], Optional[int]]]:
-    """Parses a Range header.
-
-    Returns either ``None`` or tuple ``(start, end)``.
-    Note that while the HTTP headers use inclusive byte positions,
-    this method returns indexes suitable for use in slices.
-
-    >>> start, end = _parse_request_range("bytes=1-2")
-    >>> start, end
-    (1, 3)
-    >>> [0, 1, 2, 3, 4][start:end]
-    [1, 2]
-    >>> _parse_request_range("bytes=6-")
-    (6, None)
-    >>> _parse_request_range("bytes=-6")
-    (-6, None)
-    >>> _parse_request_range("bytes=-0")
-    (None, 0)
-    >>> _parse_request_range("bytes=")
-    (None, None)
-    >>> _parse_request_range("foo=42")
-    >>> _parse_request_range("bytes=1-2,6-10")
-
-    Note: only supports one range (ex, ``bytes=1-2,6-10`` is not allowed).
-
-    See [0] for the details of the range header.
-
-    [0]: http://greenbytes.de/tech/webdav/draft-ietf-httpbis-p5-range-latest.html#byte.ranges
-    """
-    unit, _, value = range_header.partition("=")
-    unit, value = unit.strip(), value.strip()
-    if unit != "bytes":
-        return None
-    start_b, _, end_b = value.partition("-")
-    try:
-        start = _int_or_none(start_b)
-        end = _int_or_none(end_b)
-    except ValueError:
-        return None
-    if end is not None:
-        if start is None:
-            if end != 0:
-                start = -end
-                end = None
-        else:
-            end += 1
-    return (start, end)
-
-
-def _get_content_range(start: Optional[int], end: Optional[int], total: int) -> str:
-    """Returns a suitable Content-Range header:
-
-    >>> print(_get_content_range(None, 1, 4))
-    bytes 0-0/4
-    >>> print(_get_content_range(1, 3, 4))
-    bytes 1-2/4
-    >>> print(_get_content_range(None, None, 4))
-    bytes 0-3/4
-    """
-    start = start or 0
-    end = (end or total) - 1
-    return f"bytes {start}-{end}/{total}"
-
-
-def _int_or_none(val: str) -> Optional[int]:
-    val = val.strip()
-    if val == "":
-        return None
-    return int(val)
-
-
-def parse_body_arguments(
-    content_type: str,
-    body: bytes,
-    arguments: Dict[str, List[bytes]],
-    files: Dict[str, List[HTTPFile]],
-    headers: Optional[HTTPHeaders] = None,
-) -> None:
-    """Parses a form request body.
-
-    Supports ``application/x-www-form-urlencoded`` and
-    ``multipart/form-data``.  The ``content_type`` parameter should be
-    a string and ``body`` should be a byte string.  The ``arguments``
-    and ``files`` parameters are dictionaries that will be updated
-    with the parsed contents.
-    """
-    if content_type.startswith("application/x-www-form-urlencoded"):
-        if headers and "Content-Encoding" in headers:
-            raise HTTPInputError(
-                "Unsupported Content-Encoding: %s" % headers["Content-Encoding"]
-            )
-        try:
-            # real charset decoding will happen in RequestHandler.decode_argument()
-            uri_arguments = parse_qs_bytes(body, keep_blank_values=True)
-        except Exception as e:
-            raise HTTPInputError("Invalid x-www-form-urlencoded body: %s" % e) from e
-        for name, values in uri_arguments.items():
-            if values:
-                arguments.setdefault(name, []).extend(values)
-    elif content_type.startswith("multipart/form-data"):
-        if headers and "Content-Encoding" in headers:
-            raise HTTPInputError(
-                "Unsupported Content-Encoding: %s" % headers["Content-Encoding"]
-            )
-        try:
-            fields = content_type.split(";")
-            for field in fields:
-                k, sep, v = field.strip().partition("=")
-                if k == "boundary" and v:
-                    parse_multipart_form_data(utf8(v), body, arguments, files)
-                    break
-            else:
-                raise HTTPInputError("multipart boundary not found")
-        except Exception as e:
-            raise HTTPInputError("Invalid multipart/form-data: %s" % e) from e
-
-
-def parse_multipart_form_data(
-    boundary: bytes,
-    data: bytes,
-    arguments: Dict[str, List[bytes]],
-    files: Dict[str, List[HTTPFile]],
-) -> None:
-    """Parses a ``multipart/form-data`` body.
-
-    The ``boundary`` and ``data`` parameters are both byte strings.
-    The dictionaries given in the arguments and files parameters
-    will be updated with the contents of the body.
-
-    .. versionchanged:: 5.1
-
-       Now recognizes non-ASCII filenames in RFC 2231/5987
-       (``filename*=``) format.
-    """
-    # The standard allows for the boundary to be quoted in the header,
-    # although it's rare (it happens at least for google app engine
-    # xmpp).  I think we're also supposed to handle backslash-escapes
-    # here but I'll save that until we see a client that uses them
-    # in the wild.
-    if boundary.startswith(b'"') and boundary.endswith(b'"'):
-        boundary = boundary[1:-1]
-    final_boundary_index = data.rfind(b"--" + boundary + b"--")
-    if final_boundary_index == -1:
-        raise HTTPInputError("Invalid multipart/form-data: no final boundary found")
-    parts = data[:final_boundary_index].split(b"--" + boundary + b"\r\n")
-    for part in parts:
-        if not part:
-            continue
-        eoh = part.find(b"\r\n\r\n")
-        if eoh == -1:
-            raise HTTPInputError("multipart/form-data missing headers")
-        headers = HTTPHeaders.parse(part[:eoh].decode("utf-8"), _chars_are_bytes=False)
-        disp_header = headers.get("Content-Disposition", "")
-        disposition, disp_params = _parse_header(disp_header)
-        if disposition != "form-data" or not part.endswith(b"\r\n"):
-            raise HTTPInputError("Invalid multipart/form-data")
-        value = part[eoh + 4 : -2]
-        if not disp_params.get("name"):
-            raise HTTPInputError("multipart/form-data missing name")
-        name = disp_params["name"]
-        if disp_params.get("filename"):
-            ctype = headers.get("Content-Type", "application/unknown")
-            files.setdefault(name, []).append(
-                HTTPFile(
-                    filename=disp_params["filename"], body=value, content_type=ctype
-                )
-            )
-        else:
-            arguments.setdefault(name, []).append(value)
-
-
 def format_timestamp(
     ts: Union[int, float, tuple, time.struct_time, datetime.datetime],
 ) -> str:
@@ -1051,124 +720,6 @@ class ResponseStartLine(typing.NamedTuple):
     code: int
     reason: str
 
-
-def parse_response_start_line(line: str) -> ResponseStartLine:
-    """Returns a (version, code, reason) tuple for an HTTP 1.x response line.
-
-    The response is a `typing.NamedTuple`.
-
-    >>> parse_response_start_line("HTTP/1.1 200 OK")
-    ResponseStartLine(version='HTTP/1.1', code=200, reason='OK')
-    """
-    match = _ABNF.status_line.fullmatch(line)
-    if not match:
-        raise HTTPInputError("Error parsing response start line")
-    r = ResponseStartLine(match.group(1), int(match.group(2)), match.group(3))
-    if not r.version.startswith("HTTP/1"):
-        # HTTP/2 and above doesn't use parse_response_start_line.
-        raise HTTPInputError("Unexpected HTTP version %r" % r.version)
-    return r
-
-
-# _parseparam and _parse_header are copied and modified from python2.7's cgi.py
-# The original 2.7 version of this code did not correctly support some
-# combinations of semicolons and double quotes.
-# It has also been modified to support valueless parameters as seen in
-# websocket extension negotiations, and to support non-ascii values in
-# RFC 2231/5987 format.
-
-
-def _parseparam(s: str) -> Generator[str, None, None]:
-    while s[:1] == ";":
-        s = s[1:]
-        end = s.find(";")
-        while end > 0 and (s.count('"', 0, end) - s.count('\\"', 0, end)) % 2:
-            end = s.find(";", end + 1)
-        if end < 0:
-            end = len(s)
-        f = s[:end]
-        yield f.strip()
-        s = s[end:]
-
-
-def _parse_header(line: str) -> Tuple[str, Dict[str, str]]:
-    r"""Parse a Content-type like header.
-
-    Return the main content-type and a dictionary of options.
-
-    >>> d = "form-data; foo=\"b\\\\a\\\"r\"; file*=utf-8''T%C3%A4st"
-    >>> ct, d = _parse_header(d)
-    >>> ct
-    'form-data'
-    >>> d['file'] == r'T\u00e4st'.encode('ascii').decode('unicode_escape')
-    True
-    >>> d['foo']
-    'b\\a"r'
-    """
-    parts = _parseparam(";" + line)
-    key = next(parts)
-    # decode_params treats first argument special, but we already stripped key
-    params = [("Dummy", "value")]
-    for p in parts:
-        i = p.find("=")
-        if i >= 0:
-            name = p[:i].strip().lower()
-            value = p[i + 1 :].strip()
-            params.append((name, native_str(value)))
-    decoded_params = email.utils.decode_params(params)
-    decoded_params.pop(0)  # get rid of the dummy again
-    pdict = {}
-    for name, decoded_value in decoded_params:
-        value = email.utils.collapse_rfc2231_value(decoded_value)
-        if len(value) >= 2 and value[0] == '"' and value[-1] == '"':
-            value = value[1:-1]
-        pdict[name] = value
-    return key, pdict
-
-
-def _encode_header(key: str, pdict: Dict[str, str]) -> str:
-    """Inverse of _parse_header.
-
-    >>> _encode_header('permessage-deflate',
-    ...     {'client_max_window_bits': 15, 'client_no_context_takeover': None})
-    'permessage-deflate; client_max_window_bits=15; client_no_context_takeover'
-    """
-    if not pdict:
-        return key
-    out = [key]
-    # Sort the parameters just to make it easy to test.
-    for k, v in sorted(pdict.items()):
-        if v is None:
-            out.append(k)
-        else:
-            # TODO: quote if necessary.
-            out.append(f"{k}={v}")
-    return "; ".join(out)
-
-
-def encode_username_password(
-    username: Union[str, bytes], password: Union[str, bytes]
-) -> bytes:
-    """Encodes a username/password pair in the format used by HTTP auth.
-
-    The return value is a byte string in the form ``username:password``.
-
-    .. versionadded:: 5.1
-    """
-    if isinstance(username, unicode_type):
-        username = unicodedata.normalize("NFC", username)
-    if isinstance(password, unicode_type):
-        password = unicodedata.normalize("NFC", password)
-    return utf8(username) + b":" + utf8(password)
-
-
-def doctests():
-    # type: () -> unittest.TestSuite
-    import doctest
-
-    return doctest.DocTestSuite()
-
-
 _netloc_re = re.compile(r"^(.+):(\d+)$")
 
 
@@ -1187,76 +738,3 @@ def split_host_and_port(netloc: str) -> Tuple[str, Optional[int]]:
         host = netloc
         port = None
     return (host, port)
-
-
-def qs_to_qsl(qs: Dict[str, List[AnyStr]]) -> Iterable[Tuple[str, AnyStr]]:
-    """Generator converting a result of ``parse_qs`` back to name-value pairs.
-
-    .. versionadded:: 5.0
-    """
-    for k, vs in qs.items():
-        for v in vs:
-            yield (k, v)
-
-
-_unquote_sub = re.compile(r"\\(?:([0-3][0-7][0-7])|(.))").sub
-
-
-def _unquote_replace(m: re.Match) -> str:
-    if m[1]:
-        return chr(int(m[1], 8))
-    else:
-        return m[2]
-
-
-def _unquote_cookie(s: str) -> str:
-    """Handle double quotes and escaping in cookie values.
-
-    This method is copied verbatim from the Python 3.13 standard
-    library (http.cookies._unquote) so we don't have to depend on
-    non-public interfaces.
-    """
-    # If there aren't any doublequotes,
-    # then there can't be any special characters.  See RFC 2109.
-    if s is None or len(s) < 2:
-        return s
-    if s[0] != '"' or s[-1] != '"':
-        return s
-
-    # We have to assume that we must decode this string.
-    # Down to work.
-
-    # Remove the "s
-    s = s[1:-1]
-
-    # Check for special sequences.  Examples:
-    #    \012 --> \n
-    #    \"   --> "
-    #
-    return _unquote_sub(_unquote_replace, s)
-
-
-def parse_cookie(cookie: str) -> Dict[str, str]:
-    """Parse a ``Cookie`` HTTP header into a dict of name/value pairs.
-
-    This function attempts to mimic browser cookie parsing behavior;
-    it specifically does not follow any of the cookie-related RFCs
-    (because browsers don't either).
-
-    The algorithm used is identical to that used by Django version 1.9.10.
-
-    .. versionadded:: 4.4.2
-    """
-    cookiedict = {}
-    for chunk in cookie.split(";"):
-        if "=" in chunk:
-            key, val = chunk.split("=", 1)
-        else:
-            # Assume an empty name per
-            # https://bugzilla.mozilla.org/show_bug.cgi?id=169091
-            key, val = "", chunk
-        key, val = key.strip(), val.strip()
-        if key or val:
-            # unquote using Python's algorithm.
-            cookiedict[key] = _unquote_cookie(val)
-    return cookiedict

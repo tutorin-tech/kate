@@ -26,19 +26,16 @@ Contents:
 import asyncio
 import collections
 import errno
-import io
+import logging
 import numbers
 import os
 import socket
-import ssl
 import sys
 import re
 
-from kate.websocket.concurrent import Future, future_set_result_unless_cancelled
-from kate.websocket import ioloop
-from kate.websocket.log import gen_log
-from kate.websocket.netutil import ssl_wrap_socket, _client_ssl_defaults, _server_ssl_defaults
-from kate.websocket.util import errno_from_exception
+from kate.server.concurrent import Future, future_set_result_unless_cancelled
+from kate.server import ioloop
+from kate.server.util import errno_from_exception
 
 import typing
 from typing import (
@@ -63,22 +60,7 @@ _IOStreamType = TypeVar("_IOStreamType", bound="IOStream")
 # They should be caught and handled less noisily than other errors.
 _ERRNO_CONNRESET = (errno.ECONNRESET, errno.ECONNABORTED, errno.EPIPE, errno.ETIMEDOUT)
 
-if hasattr(errno, "WSAECONNRESET"):
-    _ERRNO_CONNRESET += (  # type: ignore
-        errno.WSAECONNRESET,  # type: ignore
-        errno.WSAECONNABORTED,  # type: ignore
-        errno.WSAETIMEDOUT,  # type: ignore
-    )
-
-if sys.platform == "darwin":
-    # OSX appears to have a race condition that causes send(2) to return
-    # EPROTOTYPE if called while a socket is being torn down:
-    # http://erickt.github.io/blog/2014/11/19/adventures-in-debugging-a-potential-osx-kernel-bug/
-    # Since the socket is being closed anyway, treat this as an ECONNRESET
-    # instead of an unexpected error.
-    _ERRNO_CONNRESET += (errno.EPROTOTYPE,)  # type: ignore
-
-_WINDOWS = sys.platform.startswith("win")
+LOGGER = logging.getLogger(__name__)
 
 
 class StreamClosedError(IOError):
@@ -352,7 +334,7 @@ class BaseIOStream:
             self._try_inline_read()
         except UnsatisfiableReadError as e:
             # Handle this the same way as in _handle_events.
-            gen_log.info("Unsatisfiable read, closing connection: %s" % e)
+            LOGGER.info("Unsatisfiable read, closing connection: %s" % e)
             self.close(exc_info=e)
             return future
         except:
@@ -389,7 +371,7 @@ class BaseIOStream:
             self._try_inline_read()
         except UnsatisfiableReadError as e:
             # Handle this the same way as in _handle_events.
-            gen_log.info("Unsatisfiable read, closing connection: %s" % e)
+            LOGGER.info("Unsatisfiable read, closing connection: %s" % e)
             self.close(exc_info=e)
             return future
         except:
@@ -418,51 +400,6 @@ class BaseIOStream:
         assert isinstance(num_bytes, numbers.Integral)
         self._read_bytes = num_bytes
         self._read_partial = partial
-        try:
-            self._try_inline_read()
-        except:
-            future.add_done_callback(lambda f: f.exception())
-            raise
-        return future
-
-    def read_into(self, buf: bytearray, partial: bool = False) -> Awaitable[int]:
-        """Asynchronously read a number of bytes.
-
-        ``buf`` must be a writable buffer into which data will be read.
-
-        If ``partial`` is true, the callback is run as soon as any bytes
-        have been read.  Otherwise, it is run when the ``buf`` has been
-        entirely filled with read data.
-
-        .. versionadded:: 5.0
-
-        .. versionchanged:: 6.0
-
-           The ``callback`` argument was removed. Use the returned
-           `.Future` instead.
-
-        """
-        future = self._start_read()
-
-        # First copy data already in read buffer
-        available_bytes = self._read_buffer_size
-        n = len(buf)
-        if available_bytes >= n:
-            buf[:] = memoryview(self._read_buffer)[:n]
-            del self._read_buffer[:n]
-            self._after_user_read_buffer = self._read_buffer
-        elif available_bytes > 0:
-            buf[:available_bytes] = memoryview(self._read_buffer)[:]
-
-        # Set up the supplied buffer as our temporary read buffer.
-        # The original (if it had any data remaining) has been
-        # saved for later.
-        self._user_read_buffer = True
-        self._read_buffer = buf
-        self._read_buffer_size = available_bytes
-        self._read_bytes = n
-        self._read_partial = partial
-
         try:
             self._try_inline_read()
         except:
@@ -676,7 +613,7 @@ class BaseIOStream:
 
     def _handle_events(self, fd: Union[int, ioloop._Selectable], events: int) -> None:
         if self.closed():
-            gen_log.warning("Got events for closed stream %s", fd)
+            LOGGER.warning("Got events for closed stream %s", fd)
             return
         try:
             if self._connecting:
@@ -720,10 +657,10 @@ class BaseIOStream:
                 self._state = state
                 self.io_loop.update_handler(self.fileno(), self._state)
         except UnsatisfiableReadError as e:
-            gen_log.info("Unsatisfiable read, closing connection: %s" % e)
+            LOGGER.info("Unsatisfiable read, closing connection: %s" % e)
             self.close(exc_info=e)
         except Exception as e:
-            gen_log.error("Uncaught exception, closing connection.", exc_info=True)
+            LOGGER.error("Uncaught exception, closing connection.", exc_info=True)
             self.close(exc_info=e)
             raise
 
@@ -776,7 +713,7 @@ class BaseIOStream:
         except asyncio.CancelledError:
             raise
         except Exception as e:
-            gen_log.warning("error on read: %s" % e)
+            LOGGER.warning("error on read: %s" % e)
             self.close(exc_info=e)
             return
         if pos is not None:
@@ -883,7 +820,7 @@ class BaseIOStream:
             # memory in case an exception hangs on to our stack frame.
             del buf
         if self._read_buffer_size > self.max_buffer_size:
-            gen_log.error("Reached maximum read buffer size")
+            LOGGER.error("Reached maximum read buffer size")
             self.close()
             raise StreamBufferFullError("Reached maximum read buffer size")
         return bytes_read
@@ -951,14 +888,6 @@ class BaseIOStream:
                 break
             assert size > 0
             try:
-                if _WINDOWS:
-                    # On windows, socket.send blows up if given a
-                    # write buffer that's too large, instead of just
-                    # returning the number of bytes it was able to
-                    # process.  Therefore we must not call socket.send
-                    # with more than 128KB at a time.
-                    size = 128 * 1024
-
                 num_bytes = self.write_to_fd(self._write_buffer.peek(size))
                 if num_bytes == 0:
                     break
@@ -971,7 +900,7 @@ class BaseIOStream:
                     # Broken pipe errors are usually caused by connection
                     # reset, and its better to not log EPIPE errors to
                     # minimize log spam
-                    gen_log.warning("Write error on %s: %s", self.fileno(), e)
+                    LOGGER.warning("Write error on %s: %s", self.fileno(), e)
                 self.close(exc_info=e)
                 return
 
@@ -1124,149 +1053,6 @@ class IOStream(BaseIOStream):
             # See https://github.com/tornadoweb/tornado/pull/2008
             del data
 
-    def connect(
-        self: _IOStreamType, address: Any, server_hostname: Optional[str] = None
-    ) -> "Future[_IOStreamType]":
-        """Connects the socket to a remote address without blocking.
-
-        May only be called if the socket passed to the constructor was
-        not previously connected.  The address parameter is in the
-        same format as for `socket.connect <socket.socket.connect>` for
-        the type of socket passed to the IOStream constructor,
-        e.g. an ``(ip, port)`` tuple.  Hostnames are accepted here,
-        but will be resolved synchronously and block the IOLoop.
-        If you have a hostname instead of an IP address, the `.TCPClient`
-        class is recommended instead of calling this method directly.
-        `.TCPClient` will do asynchronous DNS resolution and handle
-        both IPv4 and IPv6.
-
-        If ``callback`` is specified, it will be called with no
-        arguments when the connection is completed; if not this method
-        returns a `.Future` (whose result after a successful
-        connection will be the stream itself).
-
-        In SSL mode, the ``server_hostname`` parameter will be used
-        for certificate validation (unless disabled in the
-        ``ssl_options``) and SNI.
-
-        Note that it is safe to call `IOStream.write
-        <BaseIOStream.write>` while the connection is pending, in
-        which case the data will be written as soon as the connection
-        is ready.  Calling `IOStream` read methods before the socket is
-        connected works on some platforms but is non-portable.
-
-        .. versionchanged:: 4.0
-            If no callback is given, returns a `.Future`.
-
-        .. versionchanged:: 4.2
-           SSL certificates are validated by default; pass
-           ``ssl_options=dict(cert_reqs=ssl.CERT_NONE)`` or a
-           suitably-configured `ssl.SSLContext` to the
-           `SSLIOStream` constructor to disable.
-
-        .. versionchanged:: 6.0
-
-           The ``callback`` argument was removed. Use the returned
-           `.Future` instead.
-
-        """
-        self._connecting = True
-        future = Future()  # type: Future[_IOStreamType]
-        self._connect_future = typing.cast("Future[IOStream]", future)
-        try:
-            self.socket.connect(address)
-        except BlockingIOError:
-            # In non-blocking mode we expect connect() to raise an
-            # exception with EINPROGRESS or EWOULDBLOCK.
-            pass
-        except OSError as e:
-            # On freebsd, other errors such as ECONNREFUSED may be
-            # returned immediately when attempting to connect to
-            # localhost, so handle them the same way as an error
-            # reported later in _handle_connect.
-            if future is None:
-                gen_log.warning("Connect error on fd %s: %s", self.socket.fileno(), e)
-            self.close(exc_info=e)
-            return future
-        self._add_io_state(self.io_loop.WRITE)
-        return future
-
-    def start_tls(
-        self,
-        server_side: bool,
-        ssl_options: Optional[Union[Dict[str, Any], ssl.SSLContext]] = None,
-        server_hostname: Optional[str] = None,
-    ) -> Awaitable["SSLIOStream"]:
-        """Convert this `IOStream` to an `SSLIOStream`.
-
-        This enables protocols that begin in clear-text mode and
-        switch to SSL after some initial negotiation (such as the
-        ``STARTTLS`` extension to SMTP and IMAP).
-
-        This method cannot be used if there are outstanding reads
-        or writes on the stream, or if there is any data in the
-        IOStream's buffer (data in the operating system's socket
-        buffer is allowed).  This means it must generally be used
-        immediately after reading or writing the last clear-text
-        data.  It can also be used immediately after connecting,
-        before any reads or writes.
-
-        The ``ssl_options`` argument may be either an `ssl.SSLContext`
-        object or a dictionary of keyword arguments for the
-        `ssl.SSLContext.wrap_socket` function.  The ``server_hostname`` argument
-        will be used for certificate validation unless disabled
-        in the ``ssl_options``.
-
-        This method returns a `.Future` whose result is the new
-        `SSLIOStream`.  After this method has been called,
-        any other operation on the original stream is undefined.
-
-        If a close callback is defined on this stream, it will be
-        transferred to the new stream.
-
-        .. versionadded:: 4.0
-
-        .. versionchanged:: 4.2
-           SSL certificates are validated by default; pass
-           ``ssl_options=dict(cert_reqs=ssl.CERT_NONE)`` or a
-           suitably-configured `ssl.SSLContext` to disable.
-        """
-        if (
-            self._read_future
-            or self._write_futures
-            or self._connect_future
-            or self._closed
-            or self._read_buffer
-            or self._write_buffer
-        ):
-            raise ValueError("IOStream is not idle; cannot convert to SSL")
-        if ssl_options is None:
-            if server_side:
-                ssl_options = _server_ssl_defaults
-            else:
-                ssl_options = _client_ssl_defaults
-
-        socket = self.socket
-        self.io_loop.remove_handler(socket)
-        self.socket = None  # type: ignore
-        socket = ssl_wrap_socket(
-            socket,
-            ssl_options,
-            server_hostname=server_hostname,
-            server_side=server_side,
-            do_handshake_on_connect=False,
-        )
-        orig_close_callback = self._close_callback
-        self._close_callback = None
-
-        future = Future()  # type: Future[SSLIOStream]
-        ssl_stream = SSLIOStream(socket, ssl_options=ssl_options)
-        ssl_stream.set_close_callback(orig_close_callback)
-        ssl_stream._ssl_connect_future = future
-        ssl_stream.max_buffer_size = self.max_buffer_size
-        ssl_stream.read_chunk_size = self.read_chunk_size
-        return future
-
     def _handle_connect(self) -> None:
         try:
             err = self.socket.getsockopt(socket.SOL_SOCKET, socket.SO_ERROR)
@@ -1282,7 +1068,7 @@ class IOStream(BaseIOStream):
             # in that case a connection failure would be handled by the
             # error path in _handle_events instead of here.
             if self._connect_future is None:
-                gen_log.warning(
+                LOGGER.warning(
                     "Connect error on fd %s: %s",
                     self.socket.fileno(),
                     errno.errorcode[err],
@@ -1310,308 +1096,3 @@ class IOStream(BaseIOStream):
                 # resetting the value to ``False`` between requests.
                 if e.errno != errno.EINVAL and not self._is_connreset(e):
                     raise
-
-
-class SSLIOStream(IOStream):
-    """A utility class to write to and read from a non-blocking SSL socket.
-
-    If the socket passed to the constructor is already connected,
-    it should be wrapped with::
-
-        ssl.SSLContext(...).wrap_socket(sock, do_handshake_on_connect=False, **kwargs)
-
-    before constructing the `SSLIOStream`.  Unconnected sockets will be
-    wrapped when `IOStream.connect` is finished.
-    """
-
-    socket = None  # type: ssl.SSLSocket
-
-    def __init__(self, *args: Any, **kwargs: Any) -> None:
-        """The ``ssl_options`` keyword argument may either be an
-        `ssl.SSLContext` object or a dictionary of keywords arguments
-        for `ssl.SSLContext.wrap_socket`
-        """
-        self._ssl_options = kwargs.pop("ssl_options", _client_ssl_defaults)
-        super().__init__(*args, **kwargs)
-        self._ssl_accepting = True
-        self._handshake_reading = False
-        self._handshake_writing = False
-        self._server_hostname = None  # type: Optional[str]
-
-        # If the socket is already connected, attempt to start the handshake.
-        try:
-            self.socket.getpeername()
-        except OSError:
-            pass
-        else:
-            # Indirectly start the handshake, which will run on the next
-            # IOLoop iteration and then the real IO state will be set in
-            # _handle_events.
-            self._add_io_state(self.io_loop.WRITE)
-
-    def reading(self) -> bool:
-        return self._handshake_reading or super().reading()
-
-    def writing(self) -> bool:
-        return self._handshake_writing or super().writing()
-
-    def _do_ssl_handshake(self) -> None:
-        # Based on code from test_ssl.py in the python stdlib
-        try:
-            self._handshake_reading = False
-            self._handshake_writing = False
-            self.socket.do_handshake()
-        except ssl.SSLError as err:
-            if err.args[0] == ssl.SSL_ERROR_WANT_READ:
-                self._handshake_reading = True
-                return
-            elif err.args[0] == ssl.SSL_ERROR_WANT_WRITE:
-                self._handshake_writing = True
-                return
-            elif err.args[0] in (ssl.SSL_ERROR_EOF, ssl.SSL_ERROR_ZERO_RETURN):
-                return self.close(exc_info=err)
-            elif err.args[0] in (ssl.SSL_ERROR_SSL, ssl.SSL_ERROR_SYSCALL):
-                try:
-                    peer = self.socket.getpeername()
-                except Exception:
-                    peer = "(not connected)"
-                gen_log.warning(
-                    "SSL Error on %s %s: %s", self.socket.fileno(), peer, err
-                )
-                return self.close(exc_info=err)
-            raise
-        except OSError as err:
-            # Some port scans (e.g. nmap in -sT mode) have been known
-            # to cause do_handshake to raise EBADF and ENOTCONN, so make
-            # those errors quiet as well.
-            # https://groups.google.com/forum/?fromgroups#!topic/python-tornado/ApucKJat1_0
-            # Errno 0 is also possible in some cases (nc -z).
-            # https://github.com/tornadoweb/tornado/issues/2504
-            if self._is_connreset(err) or err.args[0] in (
-                0,
-                errno.EBADF,
-                errno.ENOTCONN,
-            ):
-                return self.close(exc_info=err)
-            raise
-        except AttributeError as err:
-            # On Linux, if the connection was reset before the call to
-            # wrap_socket, do_handshake will fail with an
-            # AttributeError.
-            return self.close(exc_info=err)
-        else:
-            self._ssl_accepting = False
-            # Prior to the introduction of SNI, this is where we would check
-            # the server's claimed hostname.
-            assert ssl.HAS_SNI
-            self._finish_ssl_connect()
-
-    def _finish_ssl_connect(self) -> None:
-        if self._ssl_connect_future is not None:
-            future = self._ssl_connect_future
-            self._ssl_connect_future = None
-            future_set_result_unless_cancelled(future, self)
-
-    def _handle_read(self) -> None:
-        if self._ssl_accepting:
-            self._do_ssl_handshake()
-            return
-        super()._handle_read()
-
-    def _handle_write(self) -> None:
-        if self._ssl_accepting:
-            self._do_ssl_handshake()
-            return
-        super()._handle_write()
-
-    def connect(
-        self, address: Tuple, server_hostname: Optional[str] = None
-    ) -> "Future[SSLIOStream]":
-        self._server_hostname = server_hostname
-        # Ignore the result of connect(). If it fails,
-        # wait_for_handshake will raise an error too. This is
-        # necessary for the old semantics of the connect callback
-        # (which takes no arguments). In 6.0 this can be refactored to
-        # be a regular coroutine.
-        # TODO: This is trickier than it looks, since if write()
-        # is called with a connect() pending, we want the connect
-        # to resolve before the write. Or do we care about this?
-        # (There's a test for it, but I think in practice users
-        # either wait for the connect before performing a write or
-        # they don't care about the connect Future at all)
-        fut = super().connect(address)
-        fut.add_done_callback(lambda f: f.exception())
-        return self.wait_for_handshake()
-
-    def _handle_connect(self) -> None:
-        # Call the superclass method to check for errors.
-        super()._handle_connect()
-        if self.closed():
-            return
-        # When the connection is complete, wrap the socket for SSL
-        # traffic.  Note that we do this by overriding _handle_connect
-        # instead of by passing a callback to super().connect because
-        # user callbacks are enqueued asynchronously on the IOLoop,
-        # but since _handle_events calls _handle_connect immediately
-        # followed by _handle_write we need this to be synchronous.
-        #
-        # The IOLoop will get confused if we swap out self.socket while the
-        # fd is registered, so remove it now and re-register after
-        # wrap_socket().
-        self.io_loop.remove_handler(self.socket)
-        old_state = self._state
-        assert old_state is not None
-        self._state = None
-        self.socket = ssl_wrap_socket(
-            self.socket,
-            self._ssl_options,
-            server_hostname=self._server_hostname,
-            do_handshake_on_connect=False,
-            server_side=False,
-        )
-        self._add_io_state(old_state)
-
-    def wait_for_handshake(self) -> "Future[SSLIOStream]":
-        """Wait for the initial SSL handshake to complete.
-
-        If a ``callback`` is given, it will be called with no
-        arguments once the handshake is complete; otherwise this
-        method returns a `.Future` which will resolve to the
-        stream itself after the handshake is complete.
-
-        Once the handshake is complete, information such as
-        the peer's certificate and NPN/ALPN selections may be
-        accessed on ``self.socket``.
-
-        This method is intended for use on server-side streams
-        or after using `IOStream.start_tls`; it should not be used
-        with `IOStream.connect` (which already waits for the
-        handshake to complete). It may only be called once per stream.
-
-        .. versionadded:: 4.2
-
-        .. versionchanged:: 6.0
-
-           The ``callback`` argument was removed. Use the returned
-           `.Future` instead.
-
-        """
-        if self._ssl_connect_future is not None:
-            raise RuntimeError("Already waiting")
-        future = self._ssl_connect_future = Future()
-        if not self._ssl_accepting:
-            self._finish_ssl_connect()
-        return future
-
-    def write_to_fd(self, data: memoryview) -> int:
-        # clip buffer size at 1GB since SSL sockets only support upto 2GB
-        # this change in behaviour is transparent, since the function is
-        # already expected to (possibly) write less than the provided buffer
-        if len(data) >> 30:
-            data = memoryview(data)[: 1 << 30]
-        try:
-            return self.socket.send(data)  # type: ignore
-        except ssl.SSLError as e:
-            if e.args[0] == ssl.SSL_ERROR_WANT_WRITE:
-                # In Python 3.5+, SSLSocket.send raises a WANT_WRITE error if
-                # the socket is not writeable; we need to transform this into
-                # an EWOULDBLOCK socket.error or a zero return value,
-                # either of which will be recognized by the caller of this
-                # method. Prior to Python 3.5, an unwriteable socket would
-                # simply return 0 bytes written.
-                return 0
-            raise
-        finally:
-            # Avoid keeping to data, which can be a memoryview.
-            # See https://github.com/tornadoweb/tornado/pull/2008
-            del data
-
-    def read_from_fd(self, buf: Union[bytearray, memoryview]) -> Optional[int]:
-        try:
-            if self._ssl_accepting:
-                # If the handshake hasn't finished yet, there can't be anything
-                # to read (attempting to read may or may not raise an exception
-                # depending on the SSL version)
-                return None
-            # clip buffer size at 1GB since SSL sockets only support upto 2GB
-            # this change in behaviour is transparent, since the function is
-            # already expected to (possibly) read less than the provided buffer
-            if len(buf) >> 30:
-                buf = memoryview(buf)[: 1 << 30]
-            try:
-                return self.socket.recv_into(buf, len(buf))
-            except ssl.SSLError as e:
-                # SSLError is a subclass of socket.error, so this except
-                # block must come first.
-                if e.args[0] == ssl.SSL_ERROR_WANT_READ:
-                    return None
-                else:
-                    raise
-            except BlockingIOError:
-                return None
-        finally:
-            del buf
-
-    def _is_connreset(self, e: BaseException) -> bool:
-        if isinstance(e, ssl.SSLError) and e.args[0] == ssl.SSL_ERROR_EOF:
-            return True
-        return super()._is_connreset(e)
-
-
-class PipeIOStream(BaseIOStream):
-    """Pipe-based `IOStream` implementation.
-
-    The constructor takes an integer file descriptor (such as one returned
-    by `os.pipe`) rather than an open file object.  Pipes are generally
-    one-way, so a `PipeIOStream` can be used for reading or writing but not
-    both.
-
-    ``PipeIOStream`` is only available on Unix-based platforms.
-    """
-
-    def __init__(self, fd: int, *args: Any, **kwargs: Any) -> None:
-        self.fd = fd
-        self._fio = io.FileIO(self.fd, "r+")
-        if sys.platform == "win32":
-            # The form and placement of this assertion is important to mypy.
-            # A plain assert statement isn't recognized here. If the assertion
-            # were earlier it would worry that the attributes of self aren't
-            # set on windows. If it were missing it would complain about
-            # the absence of the set_blocking function.
-            raise AssertionError("PipeIOStream is not supported on Windows")
-        os.set_blocking(fd, False)
-        super().__init__(*args, **kwargs)
-
-    def fileno(self) -> int:
-        return self.fd
-
-    def close_fd(self) -> None:
-        self._fio.close()
-
-    def write_to_fd(self, data: memoryview) -> int:
-        try:
-            return os.write(self.fd, data)  # type: ignore
-        finally:
-            # Avoid keeping to data, which can be a memoryview.
-            # See https://github.com/tornadoweb/tornado/pull/2008
-            del data
-
-    def read_from_fd(self, buf: Union[bytearray, memoryview]) -> Optional[int]:
-        try:
-            return self._fio.readinto(buf)  # type: ignore
-        except OSError as e:
-            if errno_from_exception(e) == errno.EBADF:
-                # If the writing half of a pipe is closed, select will
-                # report it as readable but reads will fail with EBADF.
-                self.close(exc_info=e)
-                return None
-            else:
-                raise
-        finally:
-            del buf
-
-
-def doctests() -> Any:
-    import doctest
-
-    return doctest.DocTestSuite()

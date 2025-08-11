@@ -27,122 +27,23 @@ directly.
 
 import asyncio
 from concurrent import futures
-import functools
-import sys
+import logging
 import types
-
-from kate.websocket.log import app_log
 
 import typing
 from typing import Any, Callable, Optional, Tuple, Union
 
 _T = typing.TypeVar("_T")
 
-
-class ReturnValueIgnoredError(Exception):
-    # No longer used; was previously used by @return_future
-    pass
-
-
 Future = asyncio.Future
 
 FUTURES = (futures.Future, Future)
 
+LOGGER = logging.getLogger(__name__)
+
 
 def is_future(x: Any) -> bool:
     return isinstance(x, FUTURES)
-
-
-class DummyExecutor(futures.Executor):
-    def submit(  # type: ignore[override]
-        self, fn: Callable[..., _T], *args: Any, **kwargs: Any
-    ) -> "futures.Future[_T]":
-        future = futures.Future()  # type: futures.Future[_T]
-        try:
-            future_set_result_unless_cancelled(future, fn(*args, **kwargs))
-        except Exception:
-            future_set_exc_info(future, sys.exc_info())
-        return future
-
-    if sys.version_info >= (3, 9):
-
-        def shutdown(self, wait: bool = True, cancel_futures: bool = False) -> None:
-            pass
-
-    else:
-
-        def shutdown(self, wait: bool = True) -> None:
-            pass
-
-
-dummy_executor = DummyExecutor()
-
-
-def run_on_executor(*args: Any, **kwargs: Any) -> Callable:
-    """Decorator to run a synchronous method asynchronously on an executor.
-
-    Returns a future.
-
-    The executor to be used is determined by the ``executor``
-    attributes of ``self``. To use a different attribute name, pass a
-    keyword argument to the decorator::
-
-        @run_on_executor(executor='_thread_pool')
-        def foo(self):
-            pass
-
-    This decorator should not be confused with the similarly-named
-    `.IOLoop.run_in_executor`. In general, using ``run_in_executor``
-    when *calling* a blocking method is recommended instead of using
-    this decorator when *defining* a method. If compatibility with older
-    versions of Tornado is required, consider defining an executor
-    and using ``executor.submit()`` at the call site.
-
-    .. versionchanged:: 4.2
-       Added keyword arguments to use alternative attributes.
-
-    .. versionchanged:: 5.0
-       Always uses the current IOLoop instead of ``self.io_loop``.
-
-    .. versionchanged:: 5.1
-       Returns a `.Future` compatible with ``await`` instead of a
-       `concurrent.futures.Future`.
-
-    .. deprecated:: 5.1
-
-       The ``callback`` argument is deprecated and will be removed in
-       6.0. The decorator itself is discouraged in new code but will
-       not be removed in 6.0.
-
-    .. versionchanged:: 6.0
-
-       The ``callback`` argument was removed.
-    """
-
-    # Fully type-checking decorators is tricky, and this one is
-    # discouraged anyway so it doesn't have all the generic magic.
-    def run_on_executor_decorator(fn: Callable) -> Callable[..., Future]:
-        executor = kwargs.get("executor", "executor")
-
-        @functools.wraps(fn)
-        def wrapper(self: Any, *args: Any, **kwargs: Any) -> Future:
-            async_future = Future()  # type: Future
-            conc_future = getattr(self, executor).submit(fn, self, *args, **kwargs)
-            chain_future(conc_future, async_future)
-            return async_future
-
-        return wrapper
-
-    if args and kwargs:
-        raise ValueError("cannot combine positional and keyword args")
-    if len(args) == 1:
-        return run_on_executor_decorator(args[0])
-    elif len(args) != 0:
-        raise ValueError("expected 1 argument, got %d", len(args))
-    return run_on_executor_decorator
-
-
-_NO_RESULT = object()
 
 
 def chain_future(
@@ -177,7 +78,7 @@ def chain_future(
         future_add_done_callback(a, copy)
     else:
         # concurrent.futures.Future
-        from kate.websocket.ioloop import IOLoop
+        from kate.server.ioloop import IOLoop
 
         IOLoop.current().add_future(a, copy)
 
@@ -215,7 +116,7 @@ def future_set_exception_unless_cancelled(
     if not future.cancelled():
         future.set_exception(exc)
     else:
-        app_log.error("Exception after Future was cancelled", exc_info=exc)
+        LOGGER.error("Exception after Future was cancelled", exc_info=exc)
 
 
 def future_set_exc_info(
@@ -240,20 +141,6 @@ def future_set_exc_info(
     if exc_info[1] is None:
         raise Exception("future_set_exc_info called with no exception")
     future_set_exception_unless_cancelled(future, exc_info[1])
-
-
-@typing.overload
-def future_add_done_callback(
-    future: "futures.Future[_T]", callback: Callable[["futures.Future[_T]"], None]
-) -> None:
-    pass
-
-
-@typing.overload  # noqa: F811
-def future_add_done_callback(
-    future: "Future[_T]", callback: Callable[["Future[_T]"], None]
-) -> None:
-    pass
 
 
 def future_add_done_callback(  # noqa: F811

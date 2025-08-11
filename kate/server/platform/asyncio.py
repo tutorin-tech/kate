@@ -34,8 +34,8 @@ import sys
 import threading
 import typing
 import warnings
-from kate.websocket.gen import convert_yielded
-from kate.websocket.ioloop import IOLoop, _Selectable
+from kate.server.gen import convert_yielded
+from kate.server.ioloop import IOLoop, _Selectable
 
 from typing import (
     Any,

@@ -15,6 +15,7 @@
 
 """The module contains the terminal's server side."""
 
+import argparse
 import fcntl
 import os
 import pty
@@ -25,24 +26,10 @@ import sys
 import termios
 from pathlib import Path
 
-from kate.websocket import httpserver, options, web
-from kate.websocket.ioloop import IOLoop
-from kate.websocket.options import define, options
-from kate.websocket.websocket import WebSocketHandler
-
+from kate.server import httpserver, web
+from kate.server.ioloop import IOLoop
+from kate.server.websocket import WebSocketHandler
 from kate.terminal import Terminal
-
-define('port', help='listen on a specific port', default=8888)
-define(
-    'static_path',
-    help='the path to static resources',
-    default=Path.cwd() / Path('frontend/dist'),
-)
-define(
-    'templates_path',
-    help='the path to templates',
-    default=Path.cwd() / Path('frontend/dist'),
-)
 
 
 class IndexHandler(web.RequestHandler):
@@ -50,7 +37,7 @@ class IndexHandler(web.RequestHandler):
 
     def get(self):
         """Render the index page."""
-        self.render('index.html')
+        self.write(Path(self.settings['template_path'] / 'index.html').read_text(encoding='utf8'))
 
 
 class ControlPanelHandler(web.RequestHandler):
@@ -160,7 +147,7 @@ class Application(web.Application):
     a web application.
     """
 
-    def __init__(self):
+    def __init__(self, **kwargs):
         """Initialize an Application object."""
         handlers = [
             (r'/', IndexHandler),
@@ -168,18 +155,37 @@ class Application(web.Application):
             (r'/experimental', ControlPanelHandler),
         ]
         settings = {
-            'template_path': options.templates_path,
-            'static_path': options.static_path,
+            'template_path': kwargs['templates_path'],
+            'static_path': kwargs['static_path'],
         }
         web.Application.__init__(self, handlers, **settings)
 
 
 def main():
     """Run the script."""
-    options.parse_command_line()
+    parser = argparse.ArgumentParser()
+    parser.add_argument(
+        '--static_path',
+        help='the path to static resources',
+        default=Path.cwd() / Path('frontend/dist'),
+    )
+    parser.add_argument(
+        '--templates_path',
+        help='the path to templates',
+        default=Path.cwd() / Path('frontend/dist'),
+    )
+    parser.add_argument(
+        '--port',
+        help='listen on a specific port',
+        default=8888,
+    )
+    args = parser.parse_args()
 
-    http_server = httpserver.HTTPServer(Application())
-    http_server.listen(options.port)
+    http_server = httpserver.HTTPServer(Application(
+        static_path=args.static_path,
+        templates_path=args.templates_path,
+    ))
+    http_server.listen(args.port)
 
     try:
         IOLoop.current().start()

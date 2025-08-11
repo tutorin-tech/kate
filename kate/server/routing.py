@@ -175,14 +175,14 @@ For more information on application-level routing see docs for `~.web.Applicatio
 
 """
 
+import logging
 import re
 from functools import partial
 
-from kate.websocket import httputil
-from kate.websocket.httpserver import _CallableAdapter
-from kate.websocket.escape import url_escape, url_unescape, utf8
-from kate.websocket.log import app_log
-from kate.websocket.util import basestring_type, import_object, re_unescape, unicode_type
+from kate.server import httputil
+from kate.server.httpserver import _CallableAdapter
+from kate.server.escape import url_unescape
+from kate.server.util import basestring_type, import_object, re_unescape
 
 from typing import (
     Any,
@@ -193,9 +193,10 @@ from typing import (
     Dict,
     Pattern,
     Tuple,
-    overload,
     Sequence,
 )
+
+LOGGER = logging.getLogger(__name__)
 
 
 class Router(httputil.HTTPServerConnectionDelegate):
@@ -261,7 +262,7 @@ class _RoutingDelegate(httputil.HTTPMessageDelegate):
 
         self.delegate = self.router.find_handler(request)
         if self.delegate is None:
-            app_log.debug(
+            LOGGER.debug(
                 "Delegate for %s %s request not found",
                 start_line.method,
                 start_line.path,
@@ -277,10 +278,6 @@ class _RoutingDelegate(httputil.HTTPMessageDelegate):
     def finish(self) -> None:
         assert self.delegate is not None
         self.delegate.finish()
-
-    def on_connection_close(self) -> None:
-        assert self.delegate is not None
-        self.delegate.on_connection_close()
 
 
 class _DefaultMessageDelegate(httputil.HTTPMessageDelegate):
@@ -429,24 +426,12 @@ class ReversibleRuleRouter(ReversibleRouter, RuleRouter):
 
         if rule.name:
             if rule.name in self.named_rules:
-                app_log.warning(
+                LOGGER.warning(
                     "Multiple handlers named %s; replacing previous value", rule.name
                 )
             self.named_rules[rule.name] = rule
 
         return rule
-
-    def reverse_url(self, name: str, *args: Any) -> Optional[str]:
-        if name in self.named_rules:
-            return self.named_rules[name].matcher.reverse(*args)
-
-        for rule in self.rules:
-            if isinstance(rule.target, ReversibleRouter):
-                reversed_url = rule.target.reverse_url(name, *args)
-                if reversed_url is not None:
-                    return reversed_url
-
-        return None
 
 
 class Rule:
@@ -485,18 +470,6 @@ class Rule:
         self.target_kwargs = target_kwargs if target_kwargs else {}
         self.name = name
 
-    def reverse(self, *args: Any) -> Optional[str]:
-        return self.matcher.reverse(*args)
-
-    def __repr__(self) -> str:
-        return "{}({!r}, {}, kwargs={!r}, name={!r})".format(
-            self.__class__.__name__,
-            self.matcher,
-            self.target,
-            self.target_kwargs,
-            self.name,
-        )
-
 
 class Matcher:
     """Represents a matcher for request features."""
@@ -513,51 +486,12 @@ class Matcher:
             ``None`` must be returned to indicate that there is no match."""
         raise NotImplementedError()
 
-    def reverse(self, *args: Any) -> Optional[str]:
-        """Reconstructs full url from matcher instance and additional arguments."""
-        return None
-
 
 class AnyMatches(Matcher):
     """Matches any request."""
 
     def match(self, request: httputil.HTTPServerRequest) -> Optional[Dict[str, Any]]:
         return {}
-
-
-class HostMatches(Matcher):
-    """Matches requests from hosts specified by ``host_pattern`` regex."""
-
-    def __init__(self, host_pattern: Union[str, Pattern]) -> None:
-        if isinstance(host_pattern, basestring_type):
-            if not host_pattern.endswith("$"):
-                host_pattern += "$"
-            self.host_pattern = re.compile(host_pattern)
-        else:
-            self.host_pattern = host_pattern
-
-    def match(self, request: httputil.HTTPServerRequest) -> Optional[Dict[str, Any]]:
-        if self.host_pattern.match(request.host_name):
-            return {}
-
-        return None
-
-
-class DefaultHostMatches(Matcher):
-    """Matches requests from host that is equal to application's default_host.
-    Always returns no match if ``X-Real-Ip`` header is present.
-    """
-
-    def __init__(self, application: Any, host_pattern: Pattern) -> None:
-        self.application = application
-        self.host_pattern = host_pattern
-
-    def match(self, request: httputil.HTTPServerRequest) -> Optional[Dict[str, Any]]:
-        # Look for default host if not behind load balancer (for debugging)
-        if "X-Real-Ip" not in request.headers:
-            if self.host_pattern.match(self.application.default_host):
-                return {}
-        return None
 
 
 class PathMatches(Matcher):
@@ -601,21 +535,6 @@ class PathMatches(Matcher):
 
         return dict(path_args=path_args, path_kwargs=path_kwargs)
 
-    def reverse(self, *args: Any) -> Optional[str]:
-        if self._path is None:
-            raise ValueError("Cannot reverse url regex " + self.regex.pattern)
-        assert len(args) == self._group_count, (
-            "required number of arguments " "not found"
-        )
-        if not len(args):
-            return self._path
-        converted_args = []
-        for a in args:
-            if not isinstance(a, (unicode_type, bytes)):
-                a = str(a)
-            converted_args.append(url_escape(utf8(a), plus=False))
-        return self._path % tuple(converted_args)
-
     def _find_groups(self) -> Tuple[Optional[str], Optional[int]]:
         """Returns a tuple (reverse string, group count) for a url.
 
@@ -655,65 +574,6 @@ class PathMatches(Matcher):
                 pieces.append(unescaped_fragment)
 
         return "".join(pieces), self.regex.groups
-
-
-class URLSpec(Rule):
-    """Specifies mappings between URLs and handlers.
-
-    .. versionchanged: 4.5
-       `URLSpec` is now a subclass of a `Rule` with `PathMatches` matcher and is preserved for
-       backwards compatibility.
-    """
-
-    def __init__(
-        self,
-        pattern: Union[str, Pattern],
-        handler: Any,
-        kwargs: Optional[Dict[str, Any]] = None,
-        name: Optional[str] = None,
-    ) -> None:
-        """Parameters:
-
-        * ``pattern``: Regular expression to be matched. Any capturing
-          groups in the regex will be passed in to the handler's
-          get/post/etc methods as arguments (by keyword if named, by
-          position if unnamed. Named and unnamed capturing groups
-          may not be mixed in the same rule).
-
-        * ``handler``: `~.web.RequestHandler` subclass to be invoked.
-
-        * ``kwargs`` (optional): A dictionary of additional arguments
-          to be passed to the handler's constructor.
-
-        * ``name`` (optional): A name for this handler.  Used by
-          `~.web.Application.reverse_url`.
-
-        """
-        matcher = PathMatches(pattern)
-        super().__init__(matcher, handler, kwargs, name)
-
-        self.regex = matcher.regex
-        self.handler_class = self.target
-        self.kwargs = kwargs
-
-    def __repr__(self) -> str:
-        return "{}({!r}, {}, kwargs={!r}, name={!r})".format(
-            self.__class__.__name__,
-            self.regex.pattern,
-            self.handler_class,
-            self.kwargs,
-            self.name,
-        )
-
-
-@overload
-def _unquote_or_none(s: str) -> bytes:
-    pass
-
-
-@overload  # noqa: F811
-def _unquote_or_none(s: None) -> None:
-    pass
 
 
 def _unquote_or_none(s: Optional[str]) -> Optional[bytes]:  # noqa: F811

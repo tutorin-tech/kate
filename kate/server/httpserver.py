@@ -26,16 +26,15 @@ class except to start a server at the beginning of the process
 """
 
 import socket
-import ssl
 
-from kate.websocket.escape import native_str
-from kate.websocket.http1connection import HTTP1ServerConnection, HTTP1ConnectionParameters
-from kate.websocket import httputil, iostream, netutil
-from kate.websocket.tcpserver import TCPServer
-from kate.websocket.util import Configurable
+from kate.server.escape import native_str
+from kate.server.http1connection import HTTP1ServerConnection, HTTP1ConnectionParameters
+from kate.server import httputil, iostream
+from kate.server.tcpserver import TCPServer
+from kate.server.util import Configurable
 
 import typing
-from typing import Union, Any, Dict, Callable, List, Type, Tuple, Optional, Awaitable
+from typing import Union, Any, Callable, List, Type, Tuple, Optional, Awaitable
 
 if typing.TYPE_CHECKING:
     from typing import Set  # noqa: F401
@@ -167,9 +166,7 @@ class HTTPServer(TCPServer, Configurable, httputil.HTTPServerConnectionDelegate)
         ],
         no_keep_alive: bool = False,
         xheaders: bool = False,
-        ssl_options: Optional[Union[Dict[str, Any], ssl.SSLContext]] = None,
         protocol: Optional[str] = None,
-        decompress_request: bool = False,
         chunk_size: Optional[int] = None,
         max_header_size: Optional[int] = None,
         idle_connection_timeout: Optional[float] = None,
@@ -186,7 +183,6 @@ class HTTPServer(TCPServer, Configurable, httputil.HTTPServerConnectionDelegate)
         self.xheaders = xheaders
         self.protocol = protocol
         self.conn_params = HTTP1ConnectionParameters(
-            decompress=decompress_request,
             chunk_size=chunk_size,
             max_header_size=max_header_size,
             header_timeout=idle_connection_timeout or 3600,
@@ -196,7 +192,6 @@ class HTTPServer(TCPServer, Configurable, httputil.HTTPServerConnectionDelegate)
         )
         TCPServer.__init__(
             self,
-            ssl_options=ssl_options,
             max_buffer_size=max_buffer_size,
             read_chunk_size=chunk_size,
         )
@@ -211,25 +206,6 @@ class HTTPServer(TCPServer, Configurable, httputil.HTTPServerConnectionDelegate)
     def configurable_default(cls) -> Type[Configurable]:
         return HTTPServer
 
-    async def close_all_connections(self) -> None:
-        """Close all open connections and asynchronously wait for them to finish.
-
-        This method is used in combination with `~.TCPServer.stop` to
-        support clean shutdowns (especially for unittests). Typical
-        usage would call ``stop()`` first to stop accepting new
-        connections, then ``await close_all_connections()`` to wait for
-        existing connections to finish.
-
-        This method does not currently close open websocket connections.
-
-        Note that this method is a coroutine and must be called with ``await``.
-
-        """
-        while self._connections:
-            # Peek at an arbitrary element of the set
-            conn = next(iter(self._connections))
-            await conn.close()
-
     def handle_stream(self, stream: iostream.IOStream, address: Tuple) -> None:
         context = _HTTPRequestContext(
             stream, address, self.protocol, self.trusted_downstream
@@ -241,15 +217,7 @@ class HTTPServer(TCPServer, Configurable, httputil.HTTPServerConnectionDelegate)
     def start_request(
         self, server_conn: object, request_conn: httputil.HTTPConnection
     ) -> httputil.HTTPMessageDelegate:
-        if isinstance(self.request_callback, httputil.HTTPServerConnectionDelegate):
-            delegate = self.request_callback.start_request(server_conn, request_conn)
-        else:
-            delegate = _CallableAdapter(self.request_callback, request_conn)
-
-        if self.xheaders:
-            delegate = _ProxyAdapter(delegate, request_conn)
-
-        return delegate
+        return self.request_callback.start_request(server_conn, request_conn)
 
     def on_close(self, server_conn: object) -> None:
         self._connections.remove(typing.cast(HTTP1ServerConnection, server_conn))
@@ -320,8 +288,6 @@ class _HTTPRequestContext:
             self.remote_ip = "0.0.0.0"
         if protocol:
             self.protocol = protocol
-        elif isinstance(stream, iostream.SSLIOStream):
-            self.protocol = "https"
         else:
             self.protocol = "http"
         self._orig_remote_ip = self.remote_ip
@@ -338,71 +304,6 @@ class _HTTPRequestContext:
             return native_str(self.address)
         else:
             return str(self.address)
-
-    def _apply_xheaders(self, headers: httputil.HTTPHeaders) -> None:
-        """Rewrite the ``remote_ip`` and ``protocol`` fields."""
-        # Squid uses X-Forwarded-For, others use X-Real-Ip
-        ip = headers.get("X-Forwarded-For", self.remote_ip)
-        # Skip trusted downstream hosts in X-Forwarded-For list
-        for ip in (cand.strip() for cand in reversed(ip.split(","))):
-            if ip not in self.trusted_downstream:
-                break
-        ip = headers.get("X-Real-Ip", ip)
-        if netutil.is_valid_ip(ip):
-            self.remote_ip = ip
-        # AWS uses X-Forwarded-Proto
-        proto_header = headers.get(
-            "X-Scheme", headers.get("X-Forwarded-Proto", self.protocol)
-        )
-        if proto_header:
-            # use only the last proto entry if there is more than one
-            # TODO: support trusting multiple layers of proxied protocol
-            proto_header = proto_header.split(",")[-1].strip()
-        if proto_header in ("http", "https"):
-            self.protocol = proto_header
-
-    def _unapply_xheaders(self) -> None:
-        """Undo changes from `_apply_xheaders`.
-
-        Xheaders are per-request so they should not leak to the next
-        request on the same connection.
-        """
-        self.remote_ip = self._orig_remote_ip
-        self.protocol = self._orig_protocol
-
-
-class _ProxyAdapter(httputil.HTTPMessageDelegate):
-    def __init__(
-        self,
-        delegate: httputil.HTTPMessageDelegate,
-        request_conn: httputil.HTTPConnection,
-    ) -> None:
-        self.connection = request_conn
-        self.delegate = delegate
-
-    def headers_received(
-        self,
-        start_line: Union[httputil.RequestStartLine, httputil.ResponseStartLine],
-        headers: httputil.HTTPHeaders,
-    ) -> Optional[Awaitable[None]]:
-        # TODO: either make context an official part of the
-        # HTTPConnection interface or figure out some other way to do this.
-        self.connection.context._apply_xheaders(headers)  # type: ignore
-        return self.delegate.headers_received(start_line, headers)
-
-    def data_received(self, chunk: bytes) -> Optional[Awaitable[None]]:
-        return self.delegate.data_received(chunk)
-
-    def finish(self) -> None:
-        self.delegate.finish()
-        self._cleanup()
-
-    def on_connection_close(self) -> None:
-        self.delegate.on_connection_close()
-        self._cleanup()
-
-    def _cleanup(self) -> None:
-        self.connection.context._unapply_xheaders()  # type: ignore
 
 
 HTTPRequest = httputil.HTTPServerRequest
