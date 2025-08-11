@@ -25,12 +25,10 @@ import sys
 import termios
 from pathlib import Path
 
-import tornado.httpserver
-import tornado.options
-import tornado.web
-from tornado.ioloop import IOLoop
-from tornado.options import define, options
-from tornado.websocket import WebSocketHandler
+from kate.websocket import httpserver, options, web
+from kate.websocket.ioloop import IOLoop
+from kate.websocket.options import define, options
+from kate.websocket.websocket import WebSocketHandler
 
 from kate.terminal import Terminal
 
@@ -47,7 +45,7 @@ define(
 )
 
 
-class IndexHandler(tornado.web.RequestHandler):
+class IndexHandler(web.RequestHandler):
     """The class represents a handler for the index page."""
 
     def get(self):
@@ -55,7 +53,7 @@ class IndexHandler(tornado.web.RequestHandler):
         self.render('index.html')
 
 
-class ControlPanelHandler(tornado.web.RequestHandler):
+class ControlPanelHandler(web.RequestHandler):
     """The class represents a handler for the control pane."""
 
     def get(self):
@@ -157,7 +155,7 @@ class TermSocketHandler(WebSocketHandler):
         self._destroy(self._fd)
 
 
-class Application(tornado.web.Application):
+class Application(web.Application):
     """The class represents a collection of request handlers that make up
     a web application.
     """
@@ -173,14 +171,14 @@ class Application(tornado.web.Application):
             'template_path': options.templates_path,
             'static_path': options.static_path,
         }
-        tornado.web.Application.__init__(self, handlers, **settings)
+        web.Application.__init__(self, handlers, **settings)
 
 
 def main():
     """Run the script."""
-    tornado.options.parse_command_line()
+    options.parse_command_line()
 
-    http_server = tornado.httpserver.HTTPServer(Application())
+    http_server = httpserver.HTTPServer(Application())
     http_server.listen(options.port)
 
     try:
