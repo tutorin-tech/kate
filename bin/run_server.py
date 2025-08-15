@@ -88,7 +88,7 @@ if __name__ == '__main__':
     parser.add_argument(
         '--static-path',
         help='the path to static resources',
-        default=Path.cwd().parent / Path('frontend/dist'),
+        default=Path.cwd() / Path('frontend/dist'),
     )
     parser.add_argument(
         '--host',
