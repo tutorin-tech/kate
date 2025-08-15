@@ -6,6 +6,13 @@ import mimetypes
 import os
 from pathlib import Path
 import struct
+import pty
+import fcntl
+import signal
+import sys
+import termios
+import socket as pysocket
+from kate.terminal import Terminal  # Подразумевается, что он уже есть
 
 HOST = 'localhost'
 PORT = 8080
@@ -13,7 +20,6 @@ STATIC_DIR = Path(__file__).parent.parent / 'frontend' / 'dist'
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
-
 
 class WebSocketConnection:
     def __init__(self, reader: asyncio.StreamReader, writer: asyncio.StreamWriter):
@@ -74,6 +80,83 @@ class WebSocketConnection:
         else:
             return struct.pack("!BQ", 127, length)
 
+# === PATCHED: TermSocketHandler-like logic ===
+
+clients = {}
+
+async def terminal_socket_handler(ws: WebSocketConnection):
+    loop = asyncio.get_running_loop()
+
+    def _create(rows=24, cols=80):
+        pid, fd = pty.fork()
+        if pid == 0:
+            if os.getuid() == 0:
+                cmd = ['/bin/login']
+            else:
+                sys.stdout.write(pysocket.gethostname() + ' login: \n')
+                login = sys.stdin.readline().strip()
+                cmd = [
+                    'ssh',
+                    '-oPreferredAuthentications=keyboard-interactive,password',
+                    '-oNoHostAuthenticationForLocalhost=yes',
+                    '-oLogLevel=FATAL',
+                    '-F/dev/null',
+                    '-l', login, 'localhost',
+                ]
+            env = {
+                'COLUMNS': str(cols),
+                'LINES': str(rows),
+                'PATH': os.environ['PATH'],
+                'TERM': 'linux',
+            }
+            return os.execvpe(cmd[0], cmd, env)
+
+        fcntl.fcntl(fd, fcntl.F_SETFL, os.O_NONBLOCK)
+        fcntl.ioctl(fd, termios.TIOCSWINSZ, struct.pack('HHHH', rows, cols, 0, 0))
+        clients[fd] = {
+            'ws': ws,
+            'pid': pid,
+            'terminal': Terminal(rows, cols),
+        }
+        return fd
+
+    def _destroy(fd):
+        try:
+            os.kill(clients[fd]['pid'], signal.SIGHUP)
+            os.close(fd)
+        except OSError:
+            pass
+        del clients[fd]
+
+    fd = _create()
+
+    def reader_callback():
+        try:
+            buf = os.read(fd, 65536)
+            client = clients[fd]
+            html = client['terminal'].generate_html(buf)
+            asyncio.create_task(client['ws'].send(html))
+        except OSError:
+            _destroy(fd)
+
+    loop.add_reader(fd, reader_callback)
+
+    try:
+        while True:
+            msg = await ws.recv()
+            if msg is None:
+                break
+            try:
+                os.write(fd, msg.encode('utf8'))
+            except OSError:
+                _destroy(fd)
+                break
+    finally:
+        loop.remove_reader(fd)
+        _destroy(fd)
+        await ws.close()
+
+# === END PATCH ===
 
 async def handle_client(reader: asyncio.StreamReader, writer: asyncio.StreamWriter):
     try:
@@ -87,7 +170,7 @@ async def handle_client(reader: asyncio.StreamReader, writer: asyncio.StreamWrit
     path = request_line.split()[1]
 
     if any("upgrade: websocket" in h.lower() for h in headers):
-        await handle_websocket(reader, writer, headers)
+        await handle_websocket(reader, writer, headers, path)
     else:
         await handle_static_file(path, writer)
 
@@ -119,7 +202,7 @@ async def handle_static_file(path: str, writer: asyncio.StreamWriter):
     await writer.wait_closed()
 
 
-async def handle_websocket(reader: asyncio.StreamReader, writer: asyncio.StreamWriter, headers):
+async def handle_websocket(reader, writer, headers, path):
     key = None
     for header in headers:
         if header.lower().startswith("sec-websocket-key"):
@@ -147,15 +230,19 @@ async def handle_websocket(reader: asyncio.StreamReader, writer: asyncio.StreamW
 
     ws = WebSocketConnection(reader, writer)
 
-    try:
-        while True:
-            msg = await ws.recv()
-            if msg is None:
-                break
-            logger.info(f"WebSocket received: {msg}")
-            await ws.send(f"Echo: {msg}")
-    finally:
-        await ws.close()
+    # === PATCHED: dispatch terminal socket ===
+    if path == "/termsocket":
+        await terminal_socket_handler(ws)
+    else:
+        try:
+            while True:
+                msg = await ws.recv()
+                if msg is None:
+                    break
+                logger.info(f"WebSocket received: {msg}")
+                await ws.send(f"Echo: {msg}")
+        finally:
+            await ws.close()
 
 
 async def main():
