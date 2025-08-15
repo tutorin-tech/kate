@@ -1,13 +1,13 @@
 import asyncio
+import base64
+import hashlib
 import logging
-from pathlib import Path
+import os
 import struct
 
 HOST = 'localhost'
 PORT = 8080
-STATIC_DIR = Path(__file__).parent / 'static'
 
-logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 
@@ -34,7 +34,7 @@ class WebSocketHandler:
         self.writer.write(frame)
         await self.writer.drain()
 
-    async def recv(self):
+    async def _receive_frame(self):
         try:
             header = await self.reader.readexactly(2)
         except asyncio.IncompleteReadError:
@@ -65,9 +65,10 @@ class WebSocketHandler:
 
     async def close(self):
         if not self.client_closed:
-            self.writer.write(b"\x88\x00")
-            await self.writer.drain()
             self.client_closed = True
+
+            self.writer.write(b"\x88\x00")  # 'close frame'
+            await self.writer.drain()
             self.writer.close()
             await self.writer.wait_closed()
             await self.on_close()
@@ -79,3 +80,34 @@ class WebSocketHandler:
             return struct.pack("!BH", 126, length)
         else:
             return struct.pack("!BQ", 127, length)
+
+    @staticmethod
+    async def _switch_protocol(writer, key):
+        # TODO: add comment for what purpose and what's the magic value
+        accept_value = base64.b64encode(
+            hashlib.sha1((key + "258EAFA5-E914-47DA-95CA-C5AB0DC85B11").encode()).digest()
+        ).decode("utf-8")
+
+        response = (
+            "HTTP/1.1 101 Switching Protocols\r\n"
+            "Upgrade: websocket\r\n"
+            "Connection: Upgrade\r\n"
+            f"Sec-WebSocket-Accept: {accept_value}\r\n"
+            "\r\n"
+        )
+        writer.write(response.encode("utf-8"))
+        await writer.drain()
+
+    async def handle_websocket(self, headers):
+        key = None
+        for header in headers:
+            if header.lower().startswith("sec-websocket-key"):
+                key = header.split(":", 1)[1].strip()
+                break
+
+        if not key:
+            self.writer.close()
+            await self.writer.wait_closed()
+            return
+
+        await self._switch_protocol(self.writer, key)
