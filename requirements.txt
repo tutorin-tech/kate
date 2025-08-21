@@ -1,2 +1,1 @@
 pypandoc  # only for converting README.md
-tornado == 4.5.2
