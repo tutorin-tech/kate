@@ -15,6 +15,7 @@
 
 """The module contains the terminal's server side."""
 
+import asyncio
 import fcntl
 import os
 import pty
@@ -29,11 +30,13 @@ import tornado.options
 import tornado.web
 from tornado.ioloop import IOLoop
 from tornado.options import define, options
-from tornado.websocket import WebSocketHandler
 
+from kate.core.websocket import WebSocketHandler
 from kate.terminal import Terminal
 
 define('port', help='listen on a specific port', default=8888)
+
+_BACKGROUND_TASKS = set()
 
 
 class TermSocketHandler(WebSocketHandler):
@@ -41,12 +44,12 @@ class TermSocketHandler(WebSocketHandler):
 
     clients = {}
 
-    def __init__(self, application, request, **kwargs):
+    def __init__(self, *args, **kwargs):
         """Initialize a TermSocketHandler object."""
-        WebSocketHandler.__init__(self, application, request, **kwargs)
+        super().__init__(*args, **kwargs)
 
         self._fd = None
-        self._io_loop = IOLoop.current()
+        self._io_loop = asyncio.get_running_loop()
 
     @staticmethod
     def check_origin(_origin):
@@ -111,27 +114,37 @@ class TermSocketHandler(WebSocketHandler):
     # Implementing the methods inherited from
     # tornado.websocket.WebSocketHandler
 
-    def open(self):
+    async def open(self):
         """Handle a new WebSocket connection."""
         def callback(*_args, **_kwargs):
-            buf = os.read(self._fd, 65536)
-            client = TermSocketHandler.clients[self._fd]
-            html = client['terminal'].generate_html(buf)
-            client['client'].write_message(html)
+            try:
+                buf = os.read(self._fd, 65536)
+            except OSError:
+                for task in asyncio.all_tasks(self._io_loop):
+                    task.cancel()
+            else:
+                client = TermSocketHandler.clients[self._fd]
+                html = client['terminal'].generate_html(buf)
+                task = self._io_loop.create_task(client['client'].write_message(html))
+
+                # Create a strong reference to prevent execution from being
+                # collected by the garbage collector
+                _BACKGROUND_TASKS.add(task)
+                task.add_done_callback(_BACKGROUND_TASKS.discard)
 
         self._fd = self._create()
-        self._io_loop.add_handler(self._fd, callback, self._io_loop.READ)
+        self._io_loop.add_reader(self._fd, callback)
 
-    def on_message(self, data):
+    async def on_message(self, data):
         """Handle incoming messages on the WebSocket."""
         try:
             os.write(self._fd, data.encode('utf8'))
         except OSError:
             self._destroy(self._fd)
 
-    def on_close(self):
+    async def on_close(self):
         """Handle the case when the WebSocket is closed."""
-        self._io_loop.remove_handler(self._fd)
+        self._io_loop.remove_reader(self._fd)
         self._destroy(self._fd)
 
 
