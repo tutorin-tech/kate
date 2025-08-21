@@ -1,6 +1,6 @@
 line-length = 100
 
-exclude = [".git/", "kate/core/websocket/"]
+exclude = [".git/", "kate/core/websocket/", "kate/test/core/websocket/"]
 
 target-version = "py313"
 
@@ -14,7 +14,8 @@ ignore = [
     "CPY001", # missing-copyright-notice
     "D205", # blank-line-after-summary
     "DOC201", # docstring-missing-returns
-    "PT009",  # pytest-unittest-assertion
+    "PT009", # pytest-unittest-assertion
+    "PT027", # pytest-unittest-raises-assertion
     "RUF012", # mutable-class-default
 ]
 
