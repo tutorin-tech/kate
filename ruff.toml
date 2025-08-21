@@ -1,6 +1,12 @@
 line-length = 100
 
-exclude = [".git/"]
+exclude = [
+    ".git/",
+    "kate/core/escape.py",
+    "kate/core/httputil.py",
+    "kate/core/websocket.py",
+    "kate/core/util.py",
+]
 
 target-version = "py313"
 
