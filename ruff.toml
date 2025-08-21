@@ -1,6 +1,6 @@
 line-length = 100
 
-exclude = [".git/"]
+exclude = [".git/", "kate/core/websocket/"]
 
 target-version = "py313"
 
