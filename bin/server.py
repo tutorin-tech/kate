@@ -15,7 +15,9 @@
 
 """The module contains the terminal's server side."""
 
+import argparse
 import asyncio
+import contextlib
 import fcntl
 import os
 import pty
@@ -24,17 +26,11 @@ import socket  # only for gethostname()
 import struct
 import sys
 import termios
+from pathlib import Path
 
-import tornado.httpserver
-import tornado.options
-import tornado.web
-from tornado.ioloop import IOLoop
-from tornado.options import define, options
-
+from kate.core.server import BaseServer
 from kate.core.websocket import WebSocketHandler
 from kate.terminal import Terminal
-
-define('port', help='listen on a specific port', default=8888)
 
 _BACKGROUND_TASKS = set()
 
@@ -148,30 +144,31 @@ class TermSocketHandler(WebSocketHandler):
         self._destroy(self._fd)
 
 
-class Application(tornado.web.Application):
-    """The class represents a collection of request handlers that make up
-    a web application.
-    """
+class Server(BaseServer):
+    """The class represents an implementation of the server."""
 
-    def __init__(self):
-        """Initialize an Application object."""
-        handlers = [
-            (r'/termsocket', TermSocketHandler),
-        ]
-        tornado.web.Application.__init__(self, handlers)
+    handlers = {
+        r'/termsocket': TermSocketHandler,
+    }
 
 
 def main():
     """Run the script."""
-    tornado.options.parse_command_line()
+    parser = argparse.ArgumentParser()
+    parser.add_argument('--host', default='127.0.0.1', type=str)
+    parser.add_argument('--port', default=8888, type=int)
+    parser.add_argument('--ssl_cert', type=Path)
+    parser.add_argument('--ssl_key', type=Path)
+    args = parser.parse_args()
 
-    http_server = tornado.httpserver.HTTPServer(Application())
-    http_server.listen(options.port)
-
-    try:
-        IOLoop.current().start()
-    except KeyboardInterrupt:
-        IOLoop.current().stop()
+    server = Server(
+        host=args.host,
+        port=args.port,
+        ssl_cert=args.ssl_cert,
+        ssl_key=args.ssl_key,
+    )
+    with contextlib.suppress(asyncio.CancelledError):
+        asyncio.run(server.start())
 
 
 if __name__ == '__main__':
