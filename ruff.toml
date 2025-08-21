@@ -6,6 +6,13 @@ exclude = [
     "kate/core/util.py",
     "kate/core/httputil.py",
     "kate/core/escape.py",
+
+    "kate/test/core/test_websocket_handler.py",
+    "kate/test/core/test_websocket_protocol13.py",
+    "kate/test/core/test_protocol.py",
+    "kate/test/core/test_util.py",
+    "kate/test/core/test_httputil.py",
+    "kate/test/core/test_escape.py",
 ]
 
 target-version = "py313"
@@ -20,7 +27,8 @@ ignore = [
     "CPY001", # missing-copyright-notice
     "D205", # blank-line-after-summary
     "DOC201", # docstring-missing-returns
-    "PT009",  # pytest-unittest-assertion
+    "PT009", # pytest-unittest-assertion
+    "PT027", # pytest-unittest-raises-assertion
     "RUF012", # mutable-class-default
 ]
 
