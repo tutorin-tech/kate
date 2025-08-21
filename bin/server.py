@@ -15,7 +15,9 @@
 
 """The module contains the terminal's server side."""
 
+import argparse
 import asyncio
+import contextlib
 import fcntl
 import os
 import pty
@@ -26,44 +28,11 @@ import sys
 import termios
 from pathlib import Path
 
-import tornado.httpserver
-import tornado.options
-import tornado.web
-from tornado.ioloop import IOLoop
-from tornado.options import define, options
-
+from kate.core.server import BaseServer
 from kate.core.websocket import WebSocketHandler
 from kate.terminal import Terminal
 
-define('port', help='listen on a specific port', default=8888)
-define(
-    'static_path',
-    help='the path to static resources',
-    default=Path.cwd() / Path('frontend/dist'),
-)
-define(
-    'templates_path',
-    help='the path to templates',
-    default=Path.cwd() / Path('frontend/dist'),
-)
-
 _BACKGROUND_TASKS = set()
-
-
-class IndexHandler(tornado.web.RequestHandler):
-    """The class represents a handler for the index page."""
-
-    def get(self):
-        """Render the index page."""
-        self.render('index.html')
-
-
-class ControlPanelHandler(tornado.web.RequestHandler):
-    """The class represents a handler for the control pane."""
-
-    def get(self):
-        """Render the control panel page."""
-        self.render('control-panel.html')
 
 
 class TermSocketHandler(WebSocketHandler):
@@ -170,36 +139,33 @@ class TermSocketHandler(WebSocketHandler):
         self._destroy(self._fd)
 
 
-class Application(tornado.web.Application):
-    """The class represents a collection of request handlers that make up
-    a web application.
-    """
+class Server(BaseServer):
+    """The class represents an implementation of the server."""
 
-    def __init__(self):
-        """Initialize an Application object."""
-        handlers = [
-            (r'/', IndexHandler),
-            (r'/termsocket', TermSocketHandler),
-            (r'/experimental', ControlPanelHandler),
-        ]
-        settings = {
-            'template_path': options.templates_path,
-            'static_path': options.static_path,
-        }
-        tornado.web.Application.__init__(self, handlers, **settings)
+    handlers = {
+        r'/termsocket': TermSocketHandler,
+    }
 
 
 def main():
     """Run the script."""
-    tornado.options.parse_command_line()
+    parser = argparse.ArgumentParser()
+    parser.add_argument('--host', default='127.0.0.1', type=str)
+    parser.add_argument('--port', default=8888, type=int)
+    parser.add_argument('--static-path', default=Path.cwd() / 'frontend' / 'dist', type=Path)
+    parser.add_argument('--ssl_cert', type=Path)
+    parser.add_argument('--ssl_key', type=Path)
+    args = parser.parse_args()
 
-    http_server = tornado.httpserver.HTTPServer(Application())
-    http_server.listen(options.port)
-
-    try:
-        IOLoop.current().start()
-    except KeyboardInterrupt:
-        IOLoop.current().stop()
+    server = Server(
+        host=args.host,
+        port=args.port,
+        static_path=args.static_path,
+        ssl_cert=args.ssl_cert,
+        ssl_key=args.ssl_key,
+    )
+    with contextlib.suppress(asyncio.CancelledError):
+        asyncio.run(server.start())
 
 
 if __name__ == '__main__':
