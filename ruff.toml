@@ -21,6 +21,7 @@ ignore = [
     "D205", # blank-line-after-summary
     "DOC201", # docstring-missing-returns
     "PT009",  # pytest-unittest-assertion
+    "PT027", # pytest-unittest-raises-assertion
     "RUF012", # mutable-class-default
 ]
 
