@@ -9,4 +9,4 @@ install:
 
 script:
   - env PYTHONPATH=`pwd` python3 kate/test/capabilities_test.py
-  - pep8 bin/server.py kate/terminal.py kate/test/*
+  - pep8 bin/kateterm.py kate/terminal.py kate/test/*
