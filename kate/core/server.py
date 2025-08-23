@@ -93,14 +93,7 @@ class BaseServer:
             )
 
         headers = self._convert_headers_to_dict(header_lines)
-        if upgrade := headers.get('Upgrade', ''):
-            if upgrade != 'websocket':
-                return await self._send_http_error(
-                    writer,
-                    400,
-                    "Can 'Upgrade' only to 'WebSocket'.",
-                )
-
+        if headers.get('Upgrade', ''):
             return await self.handle_websocket(reader, writer, headers, request_line.path)
 
         return await self.handle_static_file_request(request_line.path, writer)

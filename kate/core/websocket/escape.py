@@ -51,6 +51,7 @@ def to_unicode(value: None | str | bytes) -> str:
 
     return value.decode("utf-8")
 
+native_str = to_unicode
 
 # The fact that json_encode wraps json.dumps is an implementation detail.
 # Please see https://github.com/tornadoweb/tornado/pull/706
