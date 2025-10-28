@@ -8,7 +8,7 @@ from pathlib import Path
 from unittest.mock import AsyncMock, Mock, patch
 
 from kate.core.server import BaseServer, Response
-from kate.test.core.base import get_writer
+from kate.tests.core.base import get_writer
 
 
 class TestResponse(unittest.TestCase):
