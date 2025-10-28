@@ -1,5 +1,5 @@
 [run]
-omit = ./kate/tests/*
+omit = ./tests/*
 
 [report]
 exclude_also=
