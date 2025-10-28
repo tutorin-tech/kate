@@ -24,6 +24,7 @@ import logging
 import re
 from pathlib import Path
 
+from kate import mixins
 from kate.constants import (
     BLACK_AND_WHITE,
     BLINK_BIT,
@@ -34,7 +35,9 @@ from kate.constants import (
 )
 
 
-class Terminal:
+class Terminal(
+    mixins.ContentMixin,
+):
     """The class implements a terminal."""
 
     def __init__(self, rows=24, cols=80):
@@ -331,21 +334,6 @@ class Terminal:
         self._eol = False
         self._cur_x = 0
 
-    def _cap_csr(self, top, bottom):
-        """Change the scrolling region.
-
-        The ``top`` and ``bottom`` parameters are lines of the scrolling
-        region. After executing the method, the cursor position is undefined.
-        See _cap_sc and _cap_rc.
-
-        The ``top`` and ``bottom`` values start from 1.
-        """
-        self._top_most = min(self._bottom_most, top - 1)
-        self._bottom_most = min(self._bottom_most, bottom - 1)
-
-        # `_bottom_most` must be greater than or equal to `_top_most`.
-        self._bottom_most = max(self._top_most, self._bottom_most)
-
     def _cap_cub1(self):
         """Move the cursor left by 1 position.
 
@@ -375,43 +363,8 @@ class Terminal:
         """Make the cursor visible. See _cap_civis."""
         self._cur_visible = True
 
-    def _cap_dch(self, n):
-        """Delete ``n`` number of characters."""
-        cur_x, cur_y = self._cur_x, self._cur_y
-        end = self._peek((cur_x, cur_y), (self._cols, cur_y))
-        self._cap_el()
-        self._poke((cur_x, cur_y), end[n:])
-
-    def _cap_dch1(self):
-        """Delete a character."""
-        self._cap_dch(1)
-
     def _cap_dim(self):
         """Enter Half-bright mode."""
-
-    def _cap_dl(self, n):
-        """Delete ``n`` number of lines.
-
-        On the one hand, the specification says that the dl capability should
-        delete ``n`` number of lines, on the other hand, in the reality, dl
-        just scrolls up ``n`` number of lines. Notice, that dl should work
-        together with another capability that will put the cursor on the
-        line that is going to be deleted. For example, in tests dl works
-        together with the home capability, but it doesn't mean that the
-        capabilities are always used together.
-        """
-        if self._top_most <= self._cur_y <= self._bottom_most:
-            for _ in range(n):
-                self._scroll_up(self._cur_y + 1, self._bottom_most)
-
-    def _cap_dl1(self):
-        """Delete a line."""
-        self._cap_dl(1)
-
-    def _cap_ech(self, n):
-        """Erase ``n`` number of characters."""
-        self._zero((self._cur_x, self._cur_y), (self._cur_x + n, self._cur_y),
-                   inclusively=True)
 
     def _cap_ed(self):
         """Clear the screen from the current cursor position to the end of the
@@ -443,25 +396,6 @@ class Terminal:
         x = self._cur_x + 8
         q, _ = divmod(x, 8)
         self._cur_x = (q * 8) % self._cols
-
-    def _cap_ich(self, n):
-        """Insert ``n`` number of blank characters."""
-        for i in range(n):
-            self._scroll_right(self._cur_x + i, self._cur_y)
-
-    def _cap_il(self, n):
-        """Add ``n`` number of new blank lines."""
-        for _ in range(n):
-            if self._cur_y < self._bottom_most:
-                self._scroll_down(self._cur_y, self._bottom_most)
-
-    def _cap_il1(self):
-        """Add a new blank line."""
-        self._cap_il(1)
-
-    def _cap_ind(self):
-        """Scroll the screen up moving its content down."""
-        self._cursor_down()
 
     def _cap_kb2(self):
         """Handle a Center key-press on keypad."""
@@ -502,15 +436,6 @@ class Terminal:
     def _cap_rev(self):
         """Enable Reverse Video mode."""
         self._set_bit(REVERSE_BIT)
-
-    def _cap_ri(self):
-        """Scroll text down. See _cap_ind."""
-        self._cur_y = max(self._top_most, self._cur_y - 1)
-        if self._cur_y == self._top_most:
-            self._scroll_down(self._top_most, self._bottom_most)
-
-    def _cap_rmir(self):
-        """Exit Insert mode. See _cap_smir."""
 
     def _cap_rmpch(self):
         """Exit PC character display mode. See _cap_smpch."""
@@ -559,9 +484,6 @@ class Terminal:
     def _cap_sgr0(self):
         """Reset all attributes to the default values."""
         self._set_color_pair(0, 10)
-
-    def _cap_smir(self):
-        """Enter Insert mode. See _cap_rmir."""
 
     def _cap_smso(self):
         """Enter Standout mode. See _cap_rmso.
