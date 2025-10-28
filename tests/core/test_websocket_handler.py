@@ -7,7 +7,7 @@ from unittest.mock import AsyncMock, Mock, patch
 
 from kate.core.escape import json_encode, utf8
 from kate.core.websocket import WebSocketClosedError, WebSocketHandler
-from kate.tests.core.base import BaseWebSocketTestCase
+from tests.core.base import BaseWebSocketTestCase
 
 
 class TestWebSocketHandler(BaseWebSocketTestCase):  # noqa: PLR0904

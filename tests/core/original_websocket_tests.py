@@ -16,7 +16,7 @@ from kate.core.websocket import (
 )
 from kate.core.websocket import _PerMessageDeflateCompressor as Compressor
 from kate.core.websocket import _PerMessageDeflateDecompressor as Decompressor
-from kate.tests.core.base import (
+from tests.core.base import (
     BaseWebSocketTestCase,
     DummyServer,
     get_params,
