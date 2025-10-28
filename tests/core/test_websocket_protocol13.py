@@ -25,7 +25,7 @@ from kate.core.websocket import (
 )
 from kate.core.websocket import _PerMessageDeflateCompressor as Compressor
 from kate.core.websocket import _PerMessageDeflateDecompressor as Decompressor
-from kate.test.core.base import BaseWebSocketTestCase, DummyServer, get_params
+from kate.tests.core.base import BaseWebSocketTestCase, DummyServer, get_params
 
 _MAGIC_WEBSOCKET_GUID = '258EAFA5-E914-47DA-95CA-C5AB0DC85B11'
 
