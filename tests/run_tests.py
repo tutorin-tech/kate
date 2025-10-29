@@ -28,6 +28,7 @@ from tests.core.test_websocket_protocol13 import (
 )
 from tests.mixins import (
     TestContentMixin,
+    TestCoreMixin,
     TestCursorMixin,
     TestScreenBufferMixin,
     TestVisualAttributesMixin,

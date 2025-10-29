@@ -64,22 +64,6 @@ class TestCapabilities(Helper):
         self.assertEqual(1, term._cur_y)
         self.assertFalse(term._eol)
 
-    def test_cap_rs1(self):
-        """The terminal should have the possibility to completely reset to sane
-        modes.
-        """
-        # Do some useless work.
-        self._terminal._echo('a')
-        self._terminal._cursor_right()
-        self._terminal._cursor_down()
-        self._terminal._scroll_down(0, self._terminal._bottom_most)
-
-        # Reset the terminal to sane modes.
-        self._terminal._cap_rs1()
-        self.assertEqual(0, self._terminal._cur_x)
-        self.assertEqual(0, self._terminal._cur_y)
-        self.assertFalse(self._terminal._eol)
-
 
 if __name__ == '__main__':
     unittest.main()
