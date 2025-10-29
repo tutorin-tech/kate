@@ -30,6 +30,7 @@ from tests.mixins import (
     TestContentMixin,
     TestCursorMixin,
     TestScreenBufferMixin,
+    TestVisualAttributesMixin,
 )
 
 if __name__ == '__main__':
