@@ -642,3 +642,37 @@ class Helper(unittest.TestCase):
         else:
             self.assertEqual(y + n, term._cur_y)
         self.assertEqual(x, term._cur_x)
+
+    @reset_after_executing
+    def _check_cap_dl1(self, lines):
+        """A helper that checks the `_cap_dl1` method.
+        The ``lines`` argument must be a list of tuples ``(line, pos)``, where
+        ``line`` is a test string to be put on the screen, ``pos`` is a tuple
+        or list of coordinates ``(x, y)`` of the location where you want the
+        string to be. This will test deleting a single line starting from the
+        cursor position (the first line as per _cap_dl1 semantics).
+        """
+        term = self._terminal
+
+        for line, pos in lines:
+            self._put_string(line, pos)
+            term._eol = False
+
+        # Place the cursor on the line to be deleted (assume it's the first line).
+        term._cap_home()
+
+        term._cap_dl1()
+
+        if len(lines) == 1:
+            line = lines[0]
+            x, y = line[1]
+            s = line[0]
+
+            want = array.array('Q', [BLACK_AND_WHITE] * len(s))
+            got = term._peek((x, y), (len(s), y))
+            self.assertEqual(want, got)
+        else:
+            # All remaining lines should be shifted up by one
+            shifted = lines[1:len(lines)]
+            for i, (s, (x, _)) in enumerate(shifted):
+                self._check_string(s, (x, i), (len(s), i))
