@@ -52,6 +52,27 @@ class TestCursorMixin(Helper):
         self._check_cap_cr((self._terminal._right_most, 0))
         self._check_cap_cr((random.randint(1, self._terminal._right_most), 0))
 
+    def test_cap_cvvis(self):
+        """The terminal should have the possibility to make the cursor visible."""
+        term = self._terminal
+
+        term._cap_civis()
+        self.assertFalse(term._cur_visible)
+
+        term._cap_cvvis()
+        self.assertTrue(term._cur_visible)
+
+    def test_cap_civis(self):
+        """The terminal should have the possibility to make the cursor invisible."""
+        term = self._terminal
+        self.assertTrue(term._cur_visible)
+
+        term._cap_civis()
+        self.assertFalse(term._cur_visible)
+
+        term._cap_cvvis()
+        self.assertTrue(term._cur_visible)
+
     def test_cap_cub1(self):
         """The terminal should have the possibility to move the cursor left by
         1 position.
@@ -62,6 +83,29 @@ class TestCursorMixin(Helper):
 
         rand_x = random.randint(2, self._terminal._right_most - 1)
         self._check_cap_cub1((rand_x, 0))
+
+    def test_cap_cud(self):
+        """The terminal should have the possibility to move the cursor down by
+        a specified number of lines.
+        """
+        term = self._terminal
+
+        self._check_cap_cud((0, 0), 1)
+        self._check_cap_cud((term._right_most, 0), 1)
+
+        self._check_cap_cud((0, 0), 3)
+        self._check_cap_cud((term._right_most, 0), 3)
+
+        lines_to_bottom = term._bottom_most
+        self._check_cap_cud((0, 0), lines_to_bottom)
+
+        self._check_cap_cud((0, term._bottom_most - 1), 2, want_bottom=True)
+        self._check_cap_cud((0, term._bottom_most), 1, want_bottom=True)
+
+        rand_x = random.randint(0, term._right_most)
+        rand_y = random.randint(0, term._bottom_most - 3)
+        rand_n = random.randint(1, 3)
+        self._check_cap_cud((rand_x, rand_y), rand_n)
 
     def test_cap_cuf(self):
         """The terminal should have the possibility to move the cursor right by
@@ -187,6 +231,19 @@ class TestCursorMixin(Helper):
 
         rand_y = random.randint(1, term._bottom_most - 1)
         self._check_cap_kcud1((0, rand_y), want_cur_y=rand_y + 1)
+
+    def test_cap_kcuf1(self):
+        """The terminal should have the possibility to handle a Right Arrow
+        key-press.
+        """
+        term = self._terminal
+
+        self._check_cap_kcuf1((0, 0))
+        self._check_cap_kcuf1((term._right_most - 1, 0))
+        self._check_cap_kcuf1((term._right_most, 0), want_eol=True)
+
+        rand_x = random.randint(1, term._right_most - 2)
+        self._check_cap_kcuf1((rand_x, 0))
 
     def test_cap_kcuu1(self):
         """The terminal should have the possibility to handle an Up Arrow

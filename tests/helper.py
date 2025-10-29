@@ -598,3 +598,47 @@ class Helper(unittest.TestCase):
         """
         self._terminal._cap_vpa(y)
         self.assertEqual(y - 1, self._terminal._cur_y)
+
+    @reset_after_executing
+    def _check_cap_kcuf1(self, pos, *, want_eol=False):
+        """A helper that checks the `_cap_kcuf1` method.
+        The ``pos`` argument must be a tuple or list of coordinates ``(x, y)``
+        of the initial position of the cursor.
+        The ``want_eol`` keyword argument toggles checking the end-of-line
+        condition when the cursor is already at the right-most position.
+        """
+        term = self._terminal
+        x, _ = pos
+        term._cur_x, term._cur_y = pos
+        term._eol = False
+
+        term._cap_kcuf1()
+
+        if want_eol:
+            self.assertTrue(term._eol)
+            self.assertEqual(x, term._cur_x)
+        else:
+            self.assertFalse(term._eol)
+            self.assertEqual(x + 1, term._cur_x)
+        self.assertEqual(pos[1], term._cur_y)
+
+    @reset_after_executing
+    def _check_cap_cud(self, pos, n, *, want_bottom=False):
+        """A helper that checks the `_cap_cud` method.
+        The ``pos`` argument must be a tuple or list of coordinates ``(x, y)``
+        of the initial position of the cursor.
+        The ``n`` argument is the number of lines to move down.
+        The ``want_bottom`` keyword argument toggles checking that the cursor
+        doesn't move beyond the bottom-most position.
+        """
+        term = self._terminal
+        x, y = pos
+        term._cur_x, term._cur_y = pos
+
+        term._cap_cud(n)
+
+        if want_bottom:
+            self.assertEqual(term._bottom_most, term._cur_y)
+        else:
+            self.assertEqual(y + n, term._cur_y)
+        self.assertEqual(x, term._cur_x)
