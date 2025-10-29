@@ -13,7 +13,7 @@
 # License for the specific language governing permissions and limitations
 # under the License.
 
-"""The module contains the capability tests."""
+"""The module contains the terminal tests."""
 
 # ruff: noqa: S311, SLF001
 
@@ -23,8 +23,8 @@ import unittest
 from tests.helper import Helper
 
 
-class TestCapabilities(Helper):
-    """The class implements the capability tests."""
+class TestTerminal(Helper):
+    """The class implements the terminal tests."""
 
     def test_echo(self):
         """The terminal should have the possibility to put the specified
