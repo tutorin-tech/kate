@@ -4,7 +4,6 @@
 
 import unittest
 
-from tests.capabilities_test import TestCapabilities
 from tests.core.original_websocket_tests import (
     CompressionTests,
     MaxMessageSizeTest,
@@ -33,6 +32,7 @@ from tests.mixins import (
     TestScreenBufferMixin,
     TestVisualAttributesMixin,
 )
+from tests.test_terminal import TestTerminal
 
 if __name__ == '__main__':
     unittest.main()
