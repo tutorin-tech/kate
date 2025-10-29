@@ -26,6 +26,9 @@ from tests.core.test_websocket_protocol13 import (
     TestWebSocketProtocol13Writing,
     TestWebSocketProtocolBase,
 )
+from tests.mixins import (
+    TestContentMixin,
+)
 
 if __name__ == '__main__':
     unittest.main()
