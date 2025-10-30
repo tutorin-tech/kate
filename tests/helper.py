@@ -598,3 +598,81 @@ class Helper(unittest.TestCase):
         """
         self._terminal._cap_vpa(y)
         self.assertEqual(y - 1, self._terminal._cur_y)
+
+    @reset_after_executing
+    def _check_cap_kcuf1(self, pos, *, want_eol=False):
+        """A helper that checks the `_cap_kcuf1` method.
+        The ``pos`` argument must be a tuple or list of coordinates ``(x, y)``
+        of the initial position of the cursor.
+        The ``want_eol`` keyword argument toggles checking the end-of-line
+        condition when the cursor is already at the right-most position.
+        """
+        term = self._terminal
+        x, _ = pos
+        term._cur_x, term._cur_y = pos
+        term._eol = False
+
+        term._cap_kcuf1()
+
+        if want_eol:
+            self.assertTrue(term._eol)
+            self.assertEqual(x, term._cur_x)
+        else:
+            self.assertFalse(term._eol)
+            self.assertEqual(x + 1, term._cur_x)
+        self.assertEqual(pos[1], term._cur_y)
+
+    @reset_after_executing
+    def _check_cap_cud(self, pos, n, *, want_bottom=False):
+        """A helper that checks the `_cap_cud` method.
+        The ``pos`` argument must be a tuple or list of coordinates ``(x, y)``
+        of the initial position of the cursor.
+        The ``n`` argument is the number of lines to move down.
+        The ``want_bottom`` keyword argument toggles checking that the cursor
+        doesn't move beyond the bottom-most position.
+        """
+        term = self._terminal
+        x, y = pos
+        term._cur_x, term._cur_y = pos
+
+        term._cap_cud(n)
+
+        if want_bottom:
+            self.assertEqual(term._bottom_most, term._cur_y)
+        else:
+            self.assertEqual(y + n, term._cur_y)
+        self.assertEqual(x, term._cur_x)
+
+    @reset_after_executing
+    def _check_cap_dl1(self, lines):
+        """A helper that checks the `_cap_dl1` method.
+        The ``lines`` argument must be a list of tuples ``(line, pos)``, where
+        ``line`` is a test string to be put on the screen, ``pos`` is a tuple
+        or list of coordinates ``(x, y)`` of the location where you want the
+        string to be. This will test deleting a single line starting from the
+        cursor position (the first line as per _cap_dl1 semantics).
+        """
+        term = self._terminal
+
+        for line, pos in lines:
+            self._put_string(line, pos)
+            term._eol = False
+
+        # Place the cursor on the line to be deleted (assume it's the first line).
+        term._cap_home()
+
+        term._cap_dl1()
+
+        if len(lines) == 1:
+            line = lines[0]
+            x, y = line[1]
+            s = line[0]
+
+            want = array.array('Q', [BLACK_AND_WHITE] * len(s))
+            got = term._peek((x, y), (len(s), y))
+            self.assertEqual(want, got)
+        else:
+            # All remaining lines should be shifted up by one
+            shifted = lines[1:len(lines)]
+            for i, (s, (x, _)) in enumerate(shifted):
+                self._check_string(s, (x, i), (len(s), i))

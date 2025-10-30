@@ -24,7 +24,7 @@ from kate.constants import BLACK_AND_WHITE, BLINK_BIT, BOLD_BIT, REVERSE_BIT, UN
 from tests.helper import Helper
 
 
-class TestVisualAttributesMixin(Helper):
+class TestVisualAttributesMixin(Helper):  # noqa: PLR0904
     """The class implements tests for VisualAttributesMixin."""
 
     def test_cap_blink(self):
@@ -124,3 +124,171 @@ class TestVisualAttributesMixin(Helper):
         self.assertTrue(term._is_bit_set(UNDERLINE_BIT, term._sgr))
         term._cap_rmul()
         self.assertFalse(term._is_bit_set(UNDERLINE_BIT, term._sgr))
+
+    def test_default_rendition(self):
+        """The terminal should provide the default text rendition as BLACK_AND_WHITE."""
+        term = self._terminal
+        term._default_rendition()
+        self.assertEqual(BLACK_AND_WHITE, term._sgr)
+
+    def test_set_attribute(self):
+        """Test setting attributes with _set_attribute."""
+        term = self._terminal
+
+        term._set_attribute(1)
+        self.assertTrue(term._is_bit_set(BOLD_BIT, term._sgr))
+
+        term._set_attribute(4)
+        self.assertTrue(term._is_bit_set(UNDERLINE_BIT, term._sgr))
+
+        term._set_attribute(24)
+        self.assertFalse(term._is_bit_set(UNDERLINE_BIT, term._sgr))
+
+        term._set_attribute(5)
+        self.assertTrue(term._is_bit_set(BLINK_BIT, term._sgr))
+
+        term._set_attribute(7)
+        self.assertTrue(term._is_bit_set(REVERSE_BIT, term._sgr))
+
+        # Stubs
+        term._set_attribute(2)
+        term._set_attribute(10)
+        term._set_attribute(11)
+        term._set_attribute(27)
+
+    def test_set_bg_color(self):
+        """The terminal should have the possibility to set the background color."""
+        term = self._terminal
+
+        for color in range(8):  # 0-7 are background colors
+            term._set_bg_color(color)
+
+            color_bits, _ = divmod(term._sgr, 0x10000000000)
+            bg, _fg = divmod(color_bits, 16)
+            self.assertEqual(color, bg)
+
+    def test_set_fg_color(self):
+        """The terminal should have the possibility to set the foreground color."""
+        term = self._terminal
+
+        for color in range(8):  # 0-7 are foreground colors
+            term._set_fg_color(color)
+
+            color_bits, _ = divmod(term._sgr, 0x10000000000)
+            _bg, fg = divmod(color_bits, 16)
+            self.assertEqual(color, fg)
+
+    def test_set_fg_color_with_bold(self):
+        """The terminal should switch to bright colors when bold is set."""
+        term = self._terminal
+
+        term._cap_bold()
+        term._set_fg_color(1)  # red
+
+        color_bits, _ = divmod(term._sgr, 0x10000000000)  # should be bright red
+        _bg, fg = divmod(color_bits, 16)
+        self.assertEqual(9, fg)
+
+    def test_set_color_foreground(self):
+        """The terminal should handle foreground color codes."""
+        term = self._terminal
+
+        for ansi_code in range(30, 38):  # 30-37 are ANSI foreground colors
+            term._set_color(ansi_code)
+            expected_color = ansi_code - 30
+
+            color_bits, _ = divmod(term._sgr, 0x10000000000)
+            _bg, fg = divmod(color_bits, 16)
+            self.assertEqual(expected_color, fg)
+
+    def test_set_color_background(self):
+        """The terminal should handle background color codes."""
+        term = self._terminal
+
+        for ansi_code in range(40, 48):  # 40-47 are ANSI background colors
+            term._set_color(ansi_code)
+            expected_color = ansi_code - 40
+
+            color_bits, _ = divmod(term._sgr, 0x10000000000)
+            bg, _fg = divmod(color_bits, 16)
+            self.assertEqual(expected_color, bg)
+
+    def test_set_color_reset(self):
+        """The terminal should reset colors with codes 0 and 39/49."""
+        term = self._terminal
+
+        term._set_color(31)
+        term._set_color(0)  # reset
+        self.assertEqual(BLACK_AND_WHITE, term._sgr)
+
+        term._set_color(32)
+        term._set_color(39)  # foreground reset
+        self.assertEqual(BLACK_AND_WHITE, term._sgr)
+
+        term._set_color(42)  # green background
+        term._set_color(49)  # background reset
+        self.assertEqual(BLACK_AND_WHITE, term._sgr)
+
+    def test_set_color_pair(self):
+        """The terminal should handle color pair combinations."""
+        term = self._terminal
+
+        term._set_color_pair(0, 10)
+        self.assertEqual(BLACK_AND_WHITE, term._sgr)
+
+        term._sgr = 0x10000000001
+        term._set_color_pair(39, 49)  # reset
+        self.assertEqual(BLACK_AND_WHITE, term._sgr)
+
+    def test_set_color_pair_with_bold_and_bright_red(self):
+        """The terminal should handle bold attribute and bright red foreground color."""
+        term = self._terminal
+        term._set_color_pair(1, 31)
+        self.assertTrue(term._is_bit_set(BOLD_BIT, term._sgr))
+
+        color_bits, _ = divmod(term._sgr, 0x10000000000)
+        _bg, fg = divmod(color_bits, 16)
+        self.assertEqual(9, fg)  # bright red foreground
+
+    def test_set_color_pair_with_underline_and_green_bg(self):
+        """The terminal should handle underline attribute and green background color."""
+        term = self._terminal
+        term._sgr = BLACK_AND_WHITE
+        term._set_color_pair(4, 42)
+        self.assertTrue(term._is_bit_set(UNDERLINE_BIT, term._sgr))
+
+        color_bits, _ = divmod(term._sgr, 0x10000000000)
+        bg, _fg = divmod(color_bits, 16)
+        self.assertEqual(2, bg)  # green background
+
+    def test_set_color_pair_with_reverse_and_blue_fg(self):
+        """The terminal should handle reverse attribute and blue foreground color."""
+        term = self._terminal
+        term._sgr = BLACK_AND_WHITE
+        term._set_color_pair(7, 34)
+        self.assertTrue(term._is_bit_set(REVERSE_BIT, term._sgr))
+
+        color_bits, _ = divmod(term._sgr, 0x10000000000)
+        _bg, fg = divmod(color_bits, 16)
+        self.assertEqual(4, fg)  # blue foreground
+
+    def test_set_color_pair_with_blink_and_yellow_bg(self):
+        """The terminal should handle blink attribute and yellow background color."""
+        term = self._terminal
+        term._sgr = BLACK_AND_WHITE
+        term._set_color_pair(5, 43)
+        self.assertTrue(term._is_bit_set(BLINK_BIT, term._sgr))
+
+        color_bits, _ = divmod(term._sgr, 0x10000000000)
+        bg, _fg = divmod(color_bits, 16)
+        self.assertEqual(3, bg)  # yellow background
+
+    def test_set_color_pair_with_dim_and_cyan_fg(self):
+        """The terminal should handle dim attribute and cyan foreground color."""
+        term = self._terminal
+        term._sgr = BLACK_AND_WHITE
+        term._set_color_pair(2, 36)
+
+        color_bits, _ = divmod(term._sgr, 0x10000000000)
+        _bg, fg = divmod(color_bits, 16)
+        self.assertEqual(6, fg)  # cyan foreground

@@ -64,6 +64,29 @@ class TestContentMixin(Helper):
         want = s[:term._cur_x] + s[term._cur_x + 1:]
         self._check_string(want, (0, 0), (len(want), 0))
 
+    def test_cap_dch1(self):
+        """The terminal should have the possibility to delete a character."""
+        term = self._terminal
+
+        # Test deleting a single character from a string
+        s = self._get_random_string(term._cols)
+        self._put_string(s, (0, 0))
+        self._check_string(s, (0, 0), (len(s), 0))
+
+        # Delete first character
+        term._cur_x = 0
+        term._cap_dch1()
+        want = s[1:]
+        self._check_string(want, (0, 0), (len(want), 0))
+
+        # Reset and test deleting middle character
+        term._cap_rs1()
+        self._put_string(s, (0, 0))
+        term._cur_x = random.randint(1, term._right_most - 1)
+        term._cap_dch1()
+        want = s[:term._cur_x] + s[term._cur_x + 1:]
+        self._check_string(want, (0, 0), (len(want), 0))
+
     def test_cap_dl(self):
         """The terminal should have the possibility to delete ``n`` number of
         lines.
@@ -105,6 +128,17 @@ class TestContentMixin(Helper):
         lines = [(['a'] * term._cols, (0, i)) for i in range(lines_number)]
 
         self._check_cap_dl(random.randint(0, lines_number), lines)
+
+    def test_cap_dl1(self):
+        """The terminal should have the possibility to delete a single line."""
+        term = self._terminal
+
+        lines = [
+            (['a'] * term._cols, (0, 0)),
+            (['b'] * term._cols, (0, 1)),
+            (['c'] * term._cols, (0, 2)),
+        ]
+        self._check_cap_dl1(lines)
 
     def test_cap_ech(self):
         """The terminal should have the possibility to erase the specified

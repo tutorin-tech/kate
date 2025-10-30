@@ -64,6 +64,80 @@ class TestTerminal(Helper):
         self.assertEqual(1, term._cur_y)
         self.assertFalse(term._eol)
 
+    def test_generate_html_basic_text(self):
+        """Test generate_html with basic text output."""
+        html = self._terminal.generate_html(b'Hello World')
+        self.assertIn('<span class="b0 f7">Hello\xa0World</span>', html)
+
+    def test_generate_html_control_characters(self):
+        """Test generate_html processes control characters correctly."""
+        self._terminal.generate_html(b'Hello\x0d' + b'World')  # carriage return
+        self.assertEqual(self._terminal._cur_x, len(b'World'))
+
+    def test_generate_html_newlines(self):
+        """Test generate_html with newline characters."""
+        html = self._terminal.generate_html(
+            b'Line 1\n'
+            b'Line 2\n'
+            b'Line 3',
+        )
+
+        self.assertIn('<span class="b0 f7">Line\xa01', html)
+        self.assertIn('Line\xa02', html)
+        self.assertIn('Line\xa03', html)
+
+        self.assertEqual(
+            self._terminal._cur_x,
+            len(b'Line 1') + len(b'Line 2') + len(b'Line 3'),
+        )
+        self.assertEqual(self._terminal._cur_y, 2)  # third line
+
+    def test_generate_html_with_colors(self):
+        """Test generate_html with color escape sequences."""
+        html = self._terminal.generate_html(b'\x1b[31mRed Text' + b'\x1b[0m')
+        self.assertIn('<span class="b0 f1">Red\xa0Text</span>', html)
+
+    def test_generate_html_with_bold_attribute(self):
+        """Test generate_html with bold text attribute."""
+        html = self._terminal.generate_html(b'\x1b[1m' + b'Bold Text' + b'\x1b[0m')
+        self.assertIn('<span class="b0 f15 bold">Bold\xa0Text</span>', html)
+
+    def test_generate_html_with_underline_attribute(self):
+        """Test generate_html with underline text attribute."""
+        html = self._terminal.generate_html(b'\x1b[4mUnderlined' + b'\x1b[0m')
+        self.assertIn('<span class="b0 f7 underline">Underlined</span>', html)
+
+    def test_generate_html_with_reverse_attribute(self):
+        """Test generate_html with reverse text attribute."""
+        html = self._terminal.generate_html(b'\x1b[7m' + b'Reverse' + b'\x1b[0m')
+        self.assertIn('<span class="b7 f0">Reverse</span>', html)
+
+    def test_generate_html_with_blink_attribute(self):
+        """Test generate_html with blink text attribute."""
+        html = self._terminal.generate_html(b'\x1b[5m' + b'Blink' + b'\x1b[0m')
+        self.assertIn('<span class="b0 f7 blink">Blink</span>', html)
+
+    def test_generate_html_cursor_positioning(self):
+        """Test generate_html with cursor positioning sequences."""
+        self._terminal.generate_html(b'Hello' + b'\x1b[2;3H' + b'World')
+        self.assertEqual(self._terminal._cur_x, 2 + len(b'World'))
+        self.assertEqual(self._terminal._cur_y, 1)  # second line
+
+    def test_generate_html_empty_buffer(self):
+        """Test generate_html with empty buffer."""
+        html = self._terminal.generate_html(b'')
+        self.assertIn('<span class="b1 f7">\xa0\x00</span><span class="b0 f7">', html)
+
+    def test_generate_html_unicode_characters(self):
+        """Test generate_html with special Unicode characters and encoding."""
+        html = self._terminal.generate_html('café'.encode())
+        self.assertIn('café', html)
+
+    def test_generate_html_html_escaping(self):
+        """Test generate_html with characters needing HTML escaping."""
+        html = self._terminal.generate_html(b'<>&"\'')
+        self.assertIn('&lt;&gt;&amp;&quot;&#x27;', html)
+
 
 if __name__ == '__main__':
     unittest.main()
